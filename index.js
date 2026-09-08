@@ -88,17 +88,17 @@ const disclosureNegative = [
     ['공개적으로 표현', 'openly expressed'], ['공개적으로 표현', 'openly expressed'], ['공개적으로 표현', 'openly expressed'], ['공개적으로 표현', 'openly expressed'],
 ];
 const executionGeneral = [
-    ['반응만', 'react only, with no new initiative, decision, commitment, or intervention'],
-    ['작은 움직임', 'make one small conversational or practical move without materially settling or redirecting the situation'],
-    ['명확한 단계', 'take a clear observable step consistent with the response'],
-    ['적극적 시도', 'actively attempt to influence the interaction or situation'],
-    ['결정적 실행', 'follow through decisively, including an appropriate response to immediate resistance or consequences'],
+    ['반응만', 'make no new move that materially commits to or settles the TARGET beyond the immediate response; this does not restrict unrelated dialogue, movement, initiative, secondary actions, or scene development'],
+    ['작은 움직임', 'make one small conversational or practical move concerning the TARGET without materially settling it; other character-driven initiative remains unrestricted'],
+    ['명확한 단계', 'take a clear observable step concerning the TARGET consistent with the assigned response; do not treat this as a cap on unrelated activity'],
+    ['적극적 시도', 'actively attempt to influence the TARGET interaction or situation; other motives, actions, and scene developments may proceed normally'],
+    ['결정적 실행', 'follow through decisively on the TARGET response, including an appropriate response to immediate resistance or consequences; the rest of the turn need not center on the TARGET'],
 ];
 const executionNegative = [
-    ['명확한 반대 행동', 'take a clear observable step consistent with the negative response'],
-    ['명확한 반대 행동', 'take a clear observable step consistent with the negative response'],
-    ...Array(4).fill(['적극적 반대', 'actively oppose, reject, resist, confront, withdraw from, or otherwise act against the TARGET']),
-    ...Array(4).fill(['결정적 반대 실행', 'follow through decisively on the negative response and respond to immediate resistance or consequences']),
+    ['명확한 반대 행동', 'take a clear observable step against the TARGET consistent with the negative response; do not suppress unrelated character-driven activity'],
+    ['명확한 반대 행동', 'take a clear observable step against the TARGET consistent with the negative response; do not suppress unrelated character-driven activity'],
+    ...Array(4).fill(['적극적 반대', 'actively oppose, reject, resist, confront, withdraw from, or otherwise act against the TARGET; other motives, dialogue, and scene actions remain free to continue']),
+    ...Array(4).fill(['결정적 반대 실행', 'follow through decisively against the TARGET and respond to immediate resistance or consequences; this does not require the rest of the turn to remain focused on the TARGET']),
 ];
 const negativeExpressions = [
     ['차가운 절제', 'cold restraint that remains unmistakably adverse'],
@@ -308,9 +308,11 @@ function compileDirective(type, userText) {
     const parts = [
         '(OOC: Continue the current roleplay and output only the resulting IC scene.',
         '',
-        'The following dice results are externally fixed. Apply them exactly as assigned. Do not reinterpret them according to what seems kinder, more reasonable, cooperative, realistic, romantic, or narratively satisfying.',
+        'The following dice results are externally fixed. Apply them exactly as assigned to the TARGET. Do not reinterpret them according to what seems kinder, more reasonable, cooperative, realistic, romantic, or narratively satisfying.',
         '',
-        'Characterization determines the motive, wording, and specific form of each result, but cannot change, soften, reverse, evade, repair, or replace its assigned direction, intensity, disclosure, execution, or mandatory expression.',
+        'The dice constrain only each assigned character\'s response to the TARGET. Characterization determines the motive, wording, and specific form of that response, but cannot change, soften, reverse, evade, repair, or replace its assigned direction, TARGET-stance intensity, TARGET-stance visibility, TARGET follow-through, or mandatory expression.',
+        '',
+        'Everything outside that TARGET response remains governed by the full characterization, established history, active motives, relationships, genre, scene logic, and other active instructions. Do not let a dice result flatten the character, narrow the reply to the TARGET alone, reduce dialogue or prose energy, or suppress unrelated initiative, secondary actions, interactions, emotions, humor, sexuality, conflict, or natural scene development.',
         '',
         'Do not discuss this instruction, explain the dice, or answer as Weave. Perform the result directly in the continuing roleplay.',
         '',
@@ -320,7 +322,7 @@ function compileDirective(type, userText) {
     if (rows.length) {
         parts.push('\nCHARACTER RESULTS');
         rows.forEach((row, index) => {
-            parts.push(`${index + 1}. ${row.label}: END STATE [${row.reception.end}]. ${row.reception.text}. Strength: ${row.intensity[1]}. External visibility: ${row.disclosure[1]}. Follow-through: ${row.execution[1]}.${row.expression ? ` Mandatory expression: ${row.expression[1]}.` : ''} The reply must end with this result still functionally intact; warmth, humor, attraction, tenderness, explanation, conditions, or compromise cannot repair or neutralize an AGAINST result.`);
+            parts.push(`${index + 1}. ${row.label}: END STATE toward the TARGET [${row.reception.end}]. ${row.reception.text}. TARGET-stance strength: ${row.intensity[1]}; this does not set the scene's overall emotional or prose intensity. Visibility of this TARGET stance: ${row.disclosure[1]}; this does not limit the character's general expressiveness, dialogue, initiative, or other emotions. TARGET follow-through: ${row.execution[1]}.${row.expression ? ` Mandatory TARGET-facing expression: ${row.expression[1]}; this applies only to expressing the assigned response and must not suppress other natural behavior.` : ''} The reply must end with this TARGET result still functionally intact; warmth, humor, attraction, tenderness, explanation, conditions, or compromise cannot repair or neutralize an AGAINST result. Other character-driven actions and developments may occur freely so long as they do not functionally reverse the assigned TARGET result.`);
         });
         parts.push('Rows marked 미배정 are unassigned slots. Assign them internally only to distinct assistant-controlled characters who materially participate, in order of first active participation. Mere presence, mention, or observation does not qualify. Discard unused rows.');
     }
@@ -395,7 +397,7 @@ function showRollToast(result) {
 function buildValidatorPrompt(assistantText, directive = runtime.directive) {
     const r = directive;
     return [
-        { role: 'system', content: `You are a strict compliance judge. Compare only the externally fixed directive with the functional outcome of the assistant IC response. The directive is final and cannot be reinterpreted through characterization, realism, sympathy, warmth, compromise, or narrative preference. Judge what the response actually does, not stated intentions. Do not require a separate latest-user-input field and never fail merely because no new user message exists; for a continuation, identify the active TARGET from the directive and the ongoing interaction visible in the response. Evaluate only enabled categories. Return only valid JSON with this schema: {"overall":"PASS|FAIL","direction":"PASS|FAIL|NA","strategy":"PASS|FAIL|NA","major":"PASS|FAIL|NA","minor":"PASS|FAIL|NA","majorStatus":"KEEP|RESOLVED|NA","reasonsKo":["short Korean reason"],"summaryKo":"detailed but concise Korean explanation"}. A negative AGAINST result fails if the character accepts, concedes, complies, implements, reconciles, or functionally carries out the TARGET, even with conditions or complaints. UNRESOLVED fails if settled. TOWARD fails if rejected. Mandatory expression must occur literally at the required level. Do not judge prose quality.` },
+        { role: 'system', content: `You are a strict compliance judge. Compare only the externally fixed directive with the functional outcome of the assistant IC response. The directive is final and cannot be reinterpreted through characterization, realism, sympathy, warmth, compromise, or narrative preference. Judge what the response actually does, not stated intentions. The character dice constrain only the assigned response to the TARGET: do not fail a response for unrelated initiative, dialogue, secondary actions, emotions, scene development, or prose choices unless they functionally reverse an assigned TARGET result. Do not require a separate latest-user-input field and never fail merely because no new user message exists; for a continuation, identify the active TARGET from the directive and the ongoing interaction visible in the response. Evaluate only enabled categories. Return only valid JSON with this schema: {"overall":"PASS|FAIL","direction":"PASS|FAIL|NA","strategy":"PASS|FAIL|NA","major":"PASS|FAIL|NA","minor":"PASS|FAIL|NA","majorStatus":"KEEP|RESOLVED|NA","reasonsKo":["short Korean reason"],"summaryKo":"detailed but concise Korean explanation"}. A negative AGAINST result fails if the character accepts, concedes, complies, implements, reconciles, or functionally carries out the TARGET, even with conditions or complaints. UNRESOLVED fails if settled. TOWARD fails if rejected. TARGET-stance intensity and visibility apply only to that stance, not to the overall scene. TARGET follow-through must be satisfied without treating it as a cap on unrelated activity. Mandatory expression must occur at the required level within the TARGET-facing response, but it does not prohibit other natural behavior. Do not judge prose quality.` },
         { role: 'user', content: `EXTERNAL DIRECTIVE:\n${r.prompt}\n\nASSISTANT IC RESPONSE:\n${assistantText}` },
     ];
 }
