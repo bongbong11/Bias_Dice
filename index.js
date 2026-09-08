@@ -286,9 +286,15 @@ function compileDirective(type, userText) {
     const strategyRows = s.strategyEnabled ? labels.map(label => makeStrategy(label)) : [];
     const events = rollEvents(turnIndex);
     const parts = [
+        '(OOC: Continue the current roleplay and output only the resulting IC scene.',
+        '',
+        'The following dice results are externally fixed. Apply them exactly as assigned. Do not reinterpret them according to what seems kinder, more reasonable, cooperative, realistic, romantic, or narratively satisfying.',
+        '',
+        'Characterization determines the motive, wording, and specific form of each result, but cannot change, soften, reverse, evade, repair, or replace its assigned direction, intensity, disclosure, execution, or mandatory expression.',
+        '',
+        'Do not discuss this instruction, explain the dice, or answer as Weave. Perform the result directly in the continuing roleplay.',
+        '',
         '<TURN_EXECUTION_DIRECTIVE>',
-        'This is an out-of-character production command governing the next in-character reply. Do not answer it as OOC. Output the IC scene only.',
-        'These results were decided externally. Apply their bracketed end states and concrete requirements directly. Do not reinterpret, soften, balance, moralize, negotiate with, or replace them. Characterization controls the motive, wording, and specific form only; it cannot change whether the required result occurs.',
         'TARGET: the central proposal, request, treatment, claim, act, or pressure in the latest user IC input as a whole. A secondary cost, condition, or detail is not a substitute target.',
     ];
     if (rows.length) {
@@ -310,7 +316,7 @@ function compileDirective(type, userText) {
     }
     if (events.minor?.action === 'start') parts.push(`\nMINOR EVENT [START REQUIRED]: introduce one small, immediate, context-compatible development in “${events.minor.domainText}”, ${events.minor.fortuneText} for the focal interest. Keep its consequences local and do not turn it into a major plot.`);
     if (events.minor?.action === 'continue') parts.push(`\nMINOR EVENT [CONTINUE]: carry the existing small development in “${events.minor.domainText}” only as far as its direct consequence requires, then allow it to leave focus. Do not duplicate it.`);
-    parts.push('\nApply all other active characterization, continuity, world, genre, prose, output, and USER_CONTROL instructions in their own scopes. This directive decides only the enabled categories above.', '</TURN_EXECUTION_DIRECTIVE>');
+    parts.push('\nApply all other active characterization, continuity, world, genre, prose, output, and USER_CONTROL instructions in their own scopes. This directive decides only the enabled categories above.', '</TURN_EXECUTION_DIRECTIVE>', ')');
     return { type, userText, rows, strategyRows, events, prompt: parts.join('\n'), createdAt: Date.now() };
 }
 
@@ -549,6 +555,7 @@ function syncInputs() {
     $('#td_minor_chance').val(s.minorChance); $('#td_minor_chance_out').text(`${s.minorChance}%`);
     $('#td_minor_cooldown').val(s.minorCooldown);
     $('#td_validation_mode').val(s.validationMode);
+    $('#td_settings_validation_profile').val(s.validationProfile);
     $('#td_retry_mode').val(s.retryMode);
     $('#td_retry_max').val(s.retryMax);
     $('#td_toasts').prop('checked', s.toasts);
@@ -589,16 +596,19 @@ function showPanel(tab = 'control') {
 function hidePanel() { $('#td_overlay').prop('hidden', true); }
 
 function fillProfiles() {
-    const select = $('#td_validation_profile').empty().append('<option value="">선택 안 함</option>');
+    const selects = $('#td_validation_profile,#td_settings_validation_profile');
+    selects.empty().append('<option value="">선택 안 함</option>');
     try {
         if (!ConnectionManagerRequestService) throw new Error('Connection Profile API unavailable');
         for (const profile of ConnectionManagerRequestService.getSupportedProfiles()) {
-            select.append($('<option>').val(profile.id).text(`${profile.name || profile.id}${profile.model ? ` · ${profile.model}` : ''}`));
+            selects.each(function () {
+                $(this).append($('<option>').val(profile.id).text(`${profile.name || profile.id}${profile.model ? ` · ${profile.model}` : ''}`));
+            });
         }
     } catch (error) {
         console.warn('[Turn Director] Connection profiles unavailable', error);
     }
-    select.val(settings().validationProfile);
+    selects.val(settings().validationProfile);
 }
 
 async function manualValidate() {
@@ -648,12 +658,12 @@ function bindUi() {
     saveInput('#td_minor_cooldown', 'minorCooldown', Number);
     saveInput('#td_validation_mode', 'validationMode');
     saveInput('#td_validation_profile', 'validationProfile');
+    saveInput('#td_settings_validation_profile', 'validationProfile');
     saveInput('#td_retry_mode', 'retryMode');
     saveInput('#td_retry_max', 'retryMax', Number);
     saveInput('#td_toasts', 'toasts', Boolean);
     saveInput('#td_injection_mode', 'injectionMode');
     $('#td_open_panel').on('click', () => showPanel('control'));
-    $('#td_open_status').on('click', () => showPanel('status'));
     $('#td_close,#td_save_close').on('click', hidePanel);
     $('#td_overlay').on('click', e => { if (e.target.id === 'td_overlay') hidePanel(); });
     $('.td-tab').on('click', function () { showPanel($(this).data('tab')); });
@@ -668,9 +678,11 @@ function bindUi() {
         st.recentMinorDomains = [];
         await saveMetadata(); refreshUi(); toastr.success('사건 상태와 중복 기록을 초기화했습니다.', 'Turn Director');
     });
-    $('#td_floating_button').on('click', e => { e.preventDefault(); e.stopPropagation(); toggleQuickPanel(); });
-    $('#td_floating_button').on('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleQuickPanel(); } });
-    $('#td_wand_entry').on('click', e => { e.preventDefault(); e.stopPropagation(); showPanel('control'); });
+    $(document).off('click.tdQuickButton', '#td_floating_button').on('click.tdQuickButton', '#td_floating_button', e => { e.preventDefault(); e.stopPropagation(); toggleQuickPanel(); });
+    $(document).off('keydown.tdQuickButton', '#td_floating_button').on('keydown.tdQuickButton', '#td_floating_button', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleQuickPanel(); } });
+    $('#extensionsMenu').off('click.tdWand', '#td_wand_entry').on('click.tdWand', '#td_wand_entry', e => {
+        e.preventDefault(); e.stopPropagation(); showPanel('control'); toastr.info('본 설정을 열었습니다.', '🎲 Turn Director', { timeOut: 1200 });
+    });
     $('#td_quick_popover').on('pointerdown click', e => e.stopPropagation());
     $('#td_quick_close').on('click', hideQuickPanel);
     $(document).off('pointerdown.tdQuick').on('pointerdown.tdQuick', e => {
@@ -681,9 +693,11 @@ function bindUi() {
         settings()[key] = this.checked;
         saveSettingsDebounced();
         syncInputs();
+        const names = { directionEnabled: '캐릭터 방향', strategyEnabled: '답변 전략', majorEnabled: '대형 사건', minorEnabled: '소형 사건' };
+        toastr.info(`${names[key] || key}: ${this.checked ? 'ON' : 'OFF'}`, '🎲 Turn Director', { timeOut: 1200 });
     });
-    $('#td_quick_settings').on('click', () => showPanel('control'));
-    $('#td_quick_status').on('click', () => showPanel('status'));
+    $('#td_quick_settings').on('click', () => { showPanel('control'); toastr.info('본 설정을 열었습니다.', '🎲 Turn Director', { timeOut: 1200 }); });
+    $('#td_quick_status').on('click', () => { showPanel('status'); toastr.info('현재 판정을 열었습니다.', '🎲 Turn Director', { timeOut: 1200 }); });
     $('#td_quick_validate').on('click', () => { hideQuickPanel(); manualValidate(); });
     $('#td_quick_major_done').on('click', () => finishEvent('major'));
     $('#td_quick_minor_done').on('click', () => finishEvent('minor'));
@@ -714,13 +728,20 @@ jQuery(async () => {
     } catch (error) {
         handleError(error, 'Turn Director 매크로 등록 실패');
     }
-    const html = await $.get(SETTINGS_URL);
+    let html;
+    try {
+        html = await $.get(SETTINGS_URL);
+    } catch (error) {
+        handleError(error, 'Turn Director UI 로드 실패');
+        return;
+    }
     $('#extensions_settings').append(html);
+    $('#td_overlay').appendTo('body');
     if (!$('#td_floating_button').length) {
         const diceButton = $('<div id="td_floating_button" class="interactable" role="button" tabindex="0" title="Turn Director 빠른 제어" aria-label="Turn Director 빠른 제어">🎲</div>');
         if ($('#send_but').length) diceButton.insertBefore('#send_but');
-else if ($('#rightSendForm').length) $('#rightSendForm').append(diceButton);
-else $('#send_form').append(diceButton);
+        else if ($('#rightSendForm').length) $('#rightSendForm').append(diceButton);
+        else $('#send_form').append(diceButton);
     }
     if (!$('#td_quick_popover').length) $('body').append(quickPanelHtml());
     if (!$('#td_wand_container').length && $('#extensionsMenu').length) {

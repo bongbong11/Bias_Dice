@@ -1,4 +1,6 @@
-#td_settings .td-settings-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; }
+#td_settings .td-settings-actions { display:grid; grid-template-columns:1fr; gap:6px; }
+#td_settings .td-settings-profile { display:grid; gap:5px; margin-top:8px; font-size:.86rem; }
+#td_settings .td-settings-profile select { width:100%; min-width:0; }
 #td_settings .td-mini-summary { margin-top:.65rem; color:var(--SmartThemeBodyColor); opacity:.8; font-size:.9em; line-height:1.5; }
 .td-overlay[hidden] { display:none !important; }
 .td-overlay { position:fixed; inset:0; z-index:10050; display:grid; place-items:center; padding:18px; background:rgba(5,7,12,.66); backdrop-filter:blur(5px); }
@@ -53,9 +55,9 @@
 .td-quick-toggle { display:flex; align-items:center; gap:6px; min-width:0; padding:7px 8px; border:1px solid rgba(255,255,255,.08); border-radius:9px; background:rgba(255,255,255,.035); cursor:pointer; font-size:.79rem; }
 .td-quick-toggle input { margin:0; accent-color:#7767e8; }
 .td-quick-toggle span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.td-quick-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:5px; margin-top:8px; }
-.td-quick-actions button { min-width:0; min-height:29px !important; height:auto !important; padding:5px 4px !important; line-height:1.15 !important; white-space:nowrap !important; word-break:keep-all !important; overflow-wrap:normal !important; font-size:.75rem !important; }
-.td-quick-actions button:disabled { opacity:.38; cursor:not-allowed; }
+.td-quick-actions { display:grid !important; visibility:visible !important; opacity:1 !important; grid-template-columns:repeat(2,minmax(0,1fr)); gap:5px; margin-top:8px; }
+.td-quick-actions button { display:flex !important; visibility:visible !important; opacity:1 !important; align-items:center !important; justify-content:center !important; width:100% !important; min-width:0; min-height:29px !important; height:auto !important; padding:5px 4px !important; line-height:1.15 !important; white-space:nowrap !important; word-break:keep-all !important; overflow-wrap:normal !important; font-size:.75rem !important; color:var(--SmartThemeBodyColor) !important; }
+.td-quick-actions button:disabled { opacity:.38 !important; cursor:not-allowed; }
 #td_wand_entry { display:flex; align-items:center; gap:8px; }
 
 @media (max-width:650px) {
