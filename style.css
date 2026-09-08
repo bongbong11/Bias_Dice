@@ -3,8 +3,11 @@
 #td_settings .td-settings-profile select { width:100%; min-width:0; }
 #td_settings .td-mini-summary { margin-top:.65rem; color:var(--SmartThemeBodyColor); opacity:.8; font-size:.9em; line-height:1.5; }
 .td-overlay[hidden] { display:none !important; }
-.td-overlay { position:fixed; inset:0; z-index:10050; display:grid; place-items:center; padding:18px; background:rgba(5,7,12,.66); backdrop-filter:blur(5px); }
-.td-panel { width:min(760px,96vw); max-height:min(860px,92vh); overflow:auto; color:var(--SmartThemeBodyColor); background:color-mix(in srgb,var(--SmartThemeBlurTintColor) 94%,#111827 6%); border:1px solid color-mix(in srgb,var(--SmartThemeBorderColor) 70%,transparent); border-radius:18px; box-shadow:0 24px 80px rgba(0,0,0,.38); }
+.td-overlay { position:fixed; inset:0; z-index:10050; display:flex; align-items:center; justify-content:center; box-sizing:border-box; overflow:auto; padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left)); background:rgba(5,7,12,.66); backdrop-filter:blur(5px); }
+.td-panel { position:relative; box-sizing:border-box; width:min(760px,calc(100dvw - 24px)); max-width:calc(100dvw - 24px); max-height:calc(100dvh - 24px); overflow:auto; overscroll-behavior:contain; color:var(--SmartThemeBodyColor); background:color-mix(in srgb,var(--SmartThemeBlurTintColor) 94%,#111827 6%); border:1px solid color-mix(in srgb,var(--SmartThemeBorderColor) 70%,transparent); border-radius:18px; box-shadow:0 24px 80px rgba(0,0,0,.38); }
+.td-panel.td-resizing { user-select:none; }
+.td-resize-handle { position:sticky; z-index:4; float:right; bottom:0; right:0; width:38px; height:38px; margin:-30px 2px 2px auto; border-radius:11px 0 14px 0; cursor:nwse-resize; touch-action:none; background:linear-gradient(135deg,transparent 42%,rgba(207,200,255,.35) 43% 51%,transparent 52% 61%,rgba(207,200,255,.72) 62% 70%,transparent 71%); }
+.td-resize-handle:hover,.td-resize-handle:active { background-color:rgba(119,103,232,.16); }
 .td-panel-head { display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; padding:20px 22px 14px; }
 .td-panel-head h2 { margin:0; font-size:1.35rem; }
 .td-panel-head p { margin:.35rem 0 0; opacity:.66; font-size:.9rem; }
@@ -46,7 +49,7 @@
 #td_floating_button:hover { opacity:1; background:rgba(119,103,232,.16); }
 
 #td_quick_popover[hidden] { display:none !important; }
-#td_quick_popover { position:fixed; z-index:10002; width:min(330px,calc(100vw - 20px)); padding:10px; color:var(--SmartThemeBodyColor); background:color-mix(in srgb,var(--SmartThemeBlurTintColor) 95%,#111827 5%); border:1px solid color-mix(in srgb,var(--SmartThemeBorderColor) 74%,transparent); border-radius:14px; box-shadow:0 14px 44px rgba(0,0,0,.4); }
+#td_quick_popover { position:fixed; z-index:10052; box-sizing:border-box; width:min(330px,calc(100dvw - 14px)); max-height:calc(100dvh - 14px); overflow-y:auto; overscroll-behavior:contain; padding:10px; color:var(--SmartThemeBodyColor); background:color-mix(in srgb,var(--SmartThemeBlurTintColor) 95%,#111827 5%); border:1px solid color-mix(in srgb,var(--SmartThemeBorderColor) 74%,transparent); border-radius:14px; box-shadow:0 14px 44px rgba(0,0,0,.4); }
 .td-quick-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; }
 .td-quick-title { font-weight:750; }
 .td-quick-summary { margin-top:3px; font-size:.74rem; line-height:1.25; opacity:.65; }
@@ -63,9 +66,11 @@
 @media (max-width:650px) {
   .td-grid,.td-form-grid { grid-template-columns:1fr; }
   .td-event-actions,.td-bottom-actions { grid-template-columns:repeat(2,minmax(0,1fr)); }
-  .td-panel { max-height:94vh; }
+  .td-overlay { align-items:flex-start; padding:calc(env(safe-area-inset-top) + 7px) 7px calc(env(safe-area-inset-bottom) + 7px); }
+  .td-panel { width:calc(100dvw - 14px); max-width:calc(100dvw - 14px); max-height:calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 14px); border-radius:14px; }
   .td-tabpage { padding:15px; }
   .td-panel-head,.td-tabs { padding-left:15px; padding-right:15px; }
   #td_floating_button { flex-basis:30px; width:30px; height:30px; }
-  #td_quick_popover { width:min(310px,calc(100vw - 14px)); }
+  #td_quick_popover { width:min(310px,calc(100dvw - 14px)); max-height:calc(100dvh - 14px); }
+  .td-resize-handle { width:46px; height:46px; margin-top:-38px; }
 }

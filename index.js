@@ -37,6 +37,8 @@ const defaults = {
     toasts: true,
     applyOnContinue: false,
     injectionMode: 'macro',
+    panelWidth: 0,
+    panelHeight: 0,
 };
 
 const runtime = {
@@ -289,6 +291,8 @@ function compileDirective(type, userText) {
     const parts = [
         '(OOC: Continue the current roleplay and output only the resulting IC scene.',
         '',
+        '<Bias_Dice>',
+        '',
         'The following dice results are externally fixed. Apply them exactly as assigned. Do not reinterpret them according to what seems kinder, more reasonable, cooperative, realistic, romantic, or narratively satisfying.',
         '',
         'Characterization determines the motive, wording, and specific form of each result, but cannot change, soften, reverse, evade, repair, or replace its assigned direction, intensity, disclosure, execution, or mandatory expression.',
@@ -317,13 +321,13 @@ function compileDirective(type, userText) {
     }
     if (events.minor?.action === 'start') parts.push(`\nMINOR EVENT [START REQUIRED]: introduce one small, immediate, context-compatible development in “${events.minor.domainText}”, ${events.minor.fortuneText} for the focal interest. Keep its consequences local and do not turn it into a major plot.`);
     if (events.minor?.action === 'continue') parts.push(`\nMINOR EVENT [CONTINUE]: carry the existing small development in “${events.minor.domainText}” only as far as its direct consequence requires, then allow it to leave focus. Do not duplicate it.`);
-    parts.push('\nApply all other active characterization, continuity, world, genre, prose, output, and USER_CONTROL instructions in their own scopes. This directive decides only the enabled categories above.', '</TURN_EXECUTION_DIRECTIVE>', ')');
+    parts.push('\nApply all other active characterization, continuity, world, genre, prose, output, and USER_CONTROL instructions in their own scopes. This directive decides only the enabled categories above.', '</TURN_EXECUTION_DIRECTIVE>', '</Bias_Dice>', ')');
     return { type, userText, rows, strategyRows, events, prompt: parts.join('\n'), createdAt: Date.now() };
 }
 
 function macroValue() {
     if (settings().injectionMode !== 'macro' || !runtime.directive?.prompt) return '';
-    return `<Bias_Dice>\n${runtime.directive.prompt}\n</Bias_Dice>`;
+    return runtime.directive.prompt;
 }
 
 async function prepareGeneration(type, _options, dryRun) {
@@ -356,7 +360,7 @@ async function prepareGeneration(type, _options, dryRun) {
         if (s.toasts) showRollToast(runtime.directive);
     }
     if (s.injectionMode === 'depth0') {
-        setExtensionPrompt(PROMPT_KEY, `<Bias_Dice>\n${runtime.directive?.prompt || ''}\n</Bias_Dice>`, extension_prompt_types.IN_CHAT, 0, false, extension_prompt_roles.SYSTEM);
+        setExtensionPrompt(PROMPT_KEY, runtime.directive?.prompt || '', extension_prompt_types.IN_CHAT, 0, false, extension_prompt_roles.SYSTEM);
     } else {
         setExtensionPrompt(PROMPT_KEY, '', extension_prompt_types.IN_CHAT, 0);
     }
@@ -686,15 +690,89 @@ function toggleQuickPanel() {
     const opening = panel.prop('hidden');
     if (opening) {
         refreshQuickPanel();
+        panel.prop('hidden', false).css({ visibility: 'hidden' });
         const anchor = document.getElementById('td_floating_button');
         if (anchor) {
             const rect = anchor.getBoundingClientRect();
-            const width = Math.min(330, window.innerWidth - 14);
-            const left = Math.max(7, Math.min(rect.left, window.innerWidth - width - 7));
-            panel.css({ left: `${left}px`, right: 'auto', top: 'auto', bottom: `${Math.max(7, window.innerHeight - rect.top + 7)}px` });
+            const viewport = window.visualViewport;
+            const viewportLeft = viewport?.offsetLeft || 0;
+            const viewportTop = viewport?.offsetTop || 0;
+            const viewportWidth = viewport?.width || window.innerWidth;
+            const viewportHeight = viewport?.height || window.innerHeight;
+            const gap = 7;
+            const width = Math.max(240, Math.min(330, viewportWidth - gap * 2));
+            panel.css({ width: `${width}px`, maxHeight: `${Math.max(180, viewportHeight - gap * 2)}px`, overflowY: 'auto' });
+            const height = Math.min(panel.outerHeight() || 0, viewportHeight - gap * 2);
+            const minLeft = viewportLeft + gap;
+            const maxLeft = viewportLeft + viewportWidth - width - gap;
+            const left = Math.max(minLeft, Math.min(rect.right - width, maxLeft));
+            let top = rect.top - height - gap;
+            if (top < viewportTop + gap) top = rect.bottom + gap;
+            top = Math.max(viewportTop + gap, Math.min(top, viewportTop + viewportHeight - height - gap));
+            panel.css({ left: `${left}px`, right: 'auto', top: `${top}px`, bottom: 'auto' });
         }
+        panel.css({ visibility: 'visible' });
+        return;
     }
-    panel.prop('hidden', !opening);
+    panel.prop('hidden', true);
+}
+
+function applyPanelSize() {
+    const panel = $('#td_overlay .td-panel');
+    if (!panel.length) return;
+    const s = settings();
+    const viewport = window.visualViewport;
+    const availableWidth = Math.max(280, (viewport?.width || window.innerWidth) - 16);
+    const availableHeight = Math.max(280, (viewport?.height || window.innerHeight) - 16);
+    const width = Number(s.panelWidth || 0);
+    const height = Number(s.panelHeight || 0);
+    panel.css({
+        width: width > 0 ? `${Math.min(availableWidth, Math.max(280, width))}px` : '',
+        height: height > 0 ? `${Math.min(availableHeight, Math.max(280, height))}px` : '',
+    });
+}
+
+function bindPanelResize() {
+    const handle = document.getElementById('td_resize_handle');
+    const panel = document.querySelector('#td_overlay .td-panel');
+    if (!handle || !panel) return;
+    handle.addEventListener('pointerdown', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        const rect = panel.getBoundingClientRect();
+        const startX = event.clientX;
+        const startY = event.clientY;
+        handle.setPointerCapture?.(event.pointerId);
+        panel.classList.add('td-resizing');
+        const move = moveEvent => {
+            const viewport = window.visualViewport;
+            const maxWidth = Math.max(280, (viewport?.width || window.innerWidth) - 16);
+            const maxHeight = Math.max(280, (viewport?.height || window.innerHeight) - 16);
+            const width = Math.min(maxWidth, Math.max(280, rect.width + moveEvent.clientX - startX));
+            const height = Math.min(maxHeight, Math.max(280, rect.height + moveEvent.clientY - startY));
+            panel.style.width = `${width}px`;
+            panel.style.height = `${height}px`;
+        };
+        const end = () => {
+            handle.removeEventListener('pointermove', move);
+            handle.removeEventListener('pointerup', end);
+            handle.removeEventListener('pointercancel', end);
+            panel.classList.remove('td-resizing');
+            settings().panelWidth = Math.round(panel.getBoundingClientRect().width);
+            settings().panelHeight = Math.round(panel.getBoundingClientRect().height);
+            saveSettingsDebounced();
+        };
+        handle.addEventListener('pointermove', move);
+        handle.addEventListener('pointerup', end);
+        handle.addEventListener('pointercancel', end);
+    });
+    handle.addEventListener('dblclick', () => {
+        settings().panelWidth = 0;
+        settings().panelHeight = 0;
+        panel.style.width = '';
+        panel.style.height = '';
+        saveSettingsDebounced();
+    });
 }
 
 function syncInputs() {
@@ -743,6 +821,7 @@ function saveInput(id, key, transform = value => value) {
 function showPanel(tab = 'control') {
     hideQuickPanel();
     syncInputs();
+    applyPanelSize();
     $('.td-tab').removeClass('is-active').filter(`[data-tab="${tab}"]`).addClass('is-active');
     $('.td-tabpage').removeClass('is-active').filter(`[data-page="${tab}"]`).addClass('is-active');
     $('#td_overlay').prop('hidden', false);
@@ -905,6 +984,7 @@ jQuery(async () => {
     }
     fillProfiles();
     bindUi();
+    bindPanelResize();
     restoreChatSnapshot();
     syncInputs();
     registerCommands();
