@@ -2,8 +2,6 @@ import {
     Generate,
     chat,
     chat_metadata,
-    eventSource,
-    event_types,
     extension_prompt_roles,
     extension_prompt_types,
     saveMetadata,
@@ -11,14 +9,16 @@ import {
     setExtensionPrompt,
 } from '../../../../script.js';
 import { extension_settings } from '../../../extensions.js';
-import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.js';
-import { ConnectionManagerRequestService } from '../../shared.js';
 
 const MODULE = 'st-turn-director';
 const PROMPT_KEY = 'turn_director_current';
 const META_KEY = 'turnDirector';
-const FOLDER = `scripts/extensions/third-party/${MODULE}`;
+const SETTINGS_URL = new URL('settings.html', import.meta.url).href;
 const HARD_RETRY_CAP = 12;
+let eventSource;
+let event_types;
+let SlashCommandParser;
+let ConnectionManagerRequestService;
 
 const defaults = {
     directionEnabled: true,
@@ -314,6 +314,7 @@ async function validateLatest({ manual = false } = {}) {
     const s = settings();
     if (!runtime.directive) throw new Error('현재 턴에 저장된 판정이 없습니다.');
     if (!s.validationProfile) throw new Error('판독용 연결 프로필을 먼저 선택하세요.');
+    if (!ConnectionManagerRequestService) throw new Error('이 SillyTavern 버전에서는 Connection Profile 판독 API를 사용할 수 없습니다.');
     const last = [...chat].reverse().find(m => !m?.is_user && !m?.is_system && String(m?.mes || '').trim());
     if (!last) throw new Error('판독할 최신 IC 답변이 없습니다.');
     if (runtime.validating) return runtime.lastValidation;
@@ -463,6 +464,7 @@ function hidePanel() { $('#td_overlay').prop('hidden', true); }
 function fillProfiles() {
     const select = $('#td_validation_profile').empty().append('<option value="">선택 안 함</option>');
     try {
+        if (!ConnectionManagerRequestService) throw new Error('Connection Profile API unavailable');
         for (const profile of ConnectionManagerRequestService.getSupportedProfiles()) {
             select.append($('<option>').val(profile.id).text(`${profile.name || profile.id}${profile.model ? ` · ${profile.model}` : ''}`));
         }
@@ -496,6 +498,10 @@ function handleError(error, title = 'Turn Director 오류') {
 }
 
 function registerCommands() {
+    if (!SlashCommandParser?.addCommand) {
+        console.warn('[Turn Director] Slash commands are unavailable in this SillyTavern version.');
+        return;
+    }
     SlashCommandParser.addCommand('td-settings', () => { showPanel('control'); return ''; }, ['turn-director'], 'Turn Director 설정을 엽니다.');
     SlashCommandParser.addCommand('td-status', () => { showPanel('status'); return ''; }, [], '현재 주사위 판정을 봅니다.');
     SlashCommandParser.addCommand('td-validate', async () => { await manualValidate(); return ''; }, [], '최신 답변을 수동 판독합니다.');
@@ -535,7 +541,15 @@ function bindUi() {
 
 jQuery(async () => {
     settings();
-    const { macros, registerMacro, unregisterMacro } = SillyTavern.getContext();
+    const context = SillyTavern.getContext();
+    ({ eventSource, event_types } = context);
+    SlashCommandParser = context.SlashCommandParser;
+    try {
+        ({ ConnectionManagerRequestService } = await import('../../shared.js'));
+    } catch (error) {
+        console.warn('[Turn Director] Separate validation profiles are unavailable', error);
+    }
+    const { macros, registerMacro, unregisterMacro } = context;
     try {
         if (macros?.register) {
             try { macros.registry?.unregisterMacro?.('turn_director'); } catch { /* not registered */ }
@@ -550,16 +564,16 @@ jQuery(async () => {
     } catch (error) {
         handleError(error, 'Turn Director 매크로 등록 실패');
     }
-    const html = await $.get(`${FOLDER}/settings.html`);
+    const html = await $.get(SETTINGS_URL);
     $('#extensions_settings').append(html);
-    if (!$('#td_floating_button').length) $('#send_form').append('<div id="td_floating_button" class="fa-solid fa-dice" title="Turn Director"></div>');
+    if (!$('#td_floating_button').length) $('body').append('<button type="button" id="td_floating_button" title="Turn Director 설정">🎲</button>');
     fillProfiles();
     bindUi();
     syncInputs();
     registerCommands();
     eventSource.on(event_types.GENERATION_AFTER_COMMANDS, prepareGeneration);
     eventSource.on(event_types.MESSAGE_RECEIVED, onMessageReceived);
-    eventSource.on(event_types.CHAT_CHANGED, () => { runtime.turnKey = ''; runtime.directive = null; runtime.lastValidation = null; runtime.retries = 0; runtime.retrying = false; refreshUi(); });
-    eventSource.on(event_types.CONNECTION_PROFILE_LOADED, fillProfiles);
+    if (event_types.CHAT_CHANGED) eventSource.on(event_types.CHAT_CHANGED, () => { runtime.turnKey = ''; runtime.directive = null; runtime.lastValidation = null; runtime.retries = 0; runtime.retrying = false; refreshUi(); });
+    if (event_types.CONNECTION_PROFILE_LOADED) eventSource.on(event_types.CONNECTION_PROFILE_LOADED, fillProfiles);
     console.info('[Turn Director] loaded');
 });

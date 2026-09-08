@@ -38,6 +38,6 @@
 .td-status-section p { margin:4px 0; line-height:1.48; }
 .td-status-section .td-muted { opacity:.62; }
 .td-pill { display:inline-block; margin:2px 4px 2px 0; padding:3px 8px; border-radius:999px; background:rgba(255,255,255,.075); font-size:.78rem; }
-#td_floating_button { position:absolute; right:48px; bottom:8px; z-index:7; width:34px; height:34px; display:grid; place-items:center; border-radius:10px; opacity:.78; cursor:pointer; user-select:none; }
+#td_floating_button { position:fixed; right:18px; bottom:76px; z-index:1000; width:42px; height:42px; display:grid; place-items:center; padding:0; border:1px solid rgba(255,255,255,.14); border-radius:13px; color:inherit; background:color-mix(in srgb,var(--SmartThemeBlurTintColor) 88%,#17152a 12%); box-shadow:0 8px 28px rgba(0,0,0,.28); font-size:20px; opacity:.86; cursor:pointer; user-select:none; }
 #td_floating_button:hover { opacity:1; background:rgba(119,103,232,.16); }
 @media (max-width:650px) { .td-grid,.td-form-grid { grid-template-columns:1fr; } .td-panel { max-height:94vh; } .td-tabpage { padding:15px; } .td-panel-head,.td-tabs { padding-left:15px; padding-right:15px; } }
