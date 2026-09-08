@@ -718,9 +718,9 @@ jQuery(async () => {
     $('#extensions_settings').append(html);
     if (!$('#td_floating_button').length) {
         const diceButton = $('<div id="td_floating_button" class="interactable" role="button" tabindex="0" title="Turn Director 빠른 제어" aria-label="Turn Director 빠른 제어">🎲</div>');
-        if ($('#extensionsMenuButton').length) diceButton.insertAfter('#extensionsMenuButton');
-        else if ($('#leftSendForm').length) $('#leftSendForm').append(diceButton);
-        else $('#send_form').append(diceButton);
+        if ($('#send_but').length) diceButton.insertBefore('#send_but');
+else if ($('#rightSendForm').length) $('#rightSendForm').append(diceButton);
+else $('#send_form').append(diceButton);
     }
     if (!$('#td_quick_popover').length) $('body').append(quickPanelHtml());
     if (!$('#td_wand_container').length && $('#extensionsMenu').length) {
