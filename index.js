@@ -210,13 +210,26 @@ const pick = array => array[d(array.length)];
 const chance = percent => Math.random() * 100 < Number(percent || 0);
 const esc = value => $('<div>').text(String(value ?? '')).html();
 const nowId = prefix => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+const CONTINUATION_MARKER = '[NO NEW USER MESSAGE — CONTINUE THE EXISTING IC SCENE]';
+
+function continuationContext(endIndex = chat.length) {
+    const recent = chat
+        .slice(0, endIndex)
+        .filter(message => !message?.is_system && String(message?.mes || '').trim())
+        .slice(-3)
+        .map(message => `${message.is_user ? 'USER' : 'ASSISTANT'}: ${String(message.mes).trim()}`)
+        .join('\n\n');
+    return `${CONTINUATION_MARKER}\n${recent.slice(-4000)}`;
+}
 
 function latestUserText(type) {
     if (!['regenerate', 'swipe', 'continue'].includes(type)) {
         const pending = String($('#send_textarea').val() || '').trim();
         if (pending) return pending;
+        return continuationContext();
     }
-    return [...chat].reverse().find(m => m?.is_user && !m?.is_system)?.mes?.trim() || '';
+    if (type === 'continue') return continuationContext();
+    return [...chat].reverse().find(m => m?.is_user && !m?.is_system)?.mes?.trim() || continuationContext();
 }
 
 function isOoc(text) {
@@ -288,10 +301,12 @@ function compileDirective(type, userText) {
     const rows = s.directionEnabled ? labels.map(label => makeDirectionRow(label, s.directionMode)) : [];
     const strategyRows = s.strategyEnabled ? labels.map(label => makeStrategy(label)) : [];
     const events = rollEvents(turnIndex);
+    const isContinuation = String(userText || '').startsWith(CONTINUATION_MARKER);
+    const targetInstruction = isContinuation
+        ? 'TARGET: there is no new user message. Use the strongest immediate unresolved action, approach, proposal, pressure, conflict, or ongoing development available at the end of the recent IC scene. Missing input is not itself a target or an in-scene event.'
+        : 'TARGET: the central proposal, request, treatment, claim, act, or pressure in the latest user IC input as a whole. A secondary cost, condition, or detail is not a substitute target.';
     const parts = [
         '(OOC: Continue the current roleplay and output only the resulting IC scene.',
-        '',
-        '<Bias_Dice>',
         '',
         'The following dice results are externally fixed. Apply them exactly as assigned. Do not reinterpret them according to what seems kinder, more reasonable, cooperative, realistic, romantic, or narratively satisfying.',
         '',
@@ -300,7 +315,7 @@ function compileDirective(type, userText) {
         'Do not discuss this instruction, explain the dice, or answer as Weave. Perform the result directly in the continuing roleplay.',
         '',
         '<TURN_EXECUTION_DIRECTIVE>',
-        'TARGET: the central proposal, request, treatment, claim, act, or pressure in the latest user IC input as a whole. A secondary cost, condition, or detail is not a substitute target.',
+        targetInstruction,
     ];
     if (rows.length) {
         parts.push('\nCHARACTER RESULTS');
@@ -321,7 +336,7 @@ function compileDirective(type, userText) {
     }
     if (events.minor?.action === 'start') parts.push(`\nMINOR EVENT [START REQUIRED]: introduce one small, immediate, context-compatible development in “${events.minor.domainText}”, ${events.minor.fortuneText} for the focal interest. Keep its consequences local and do not turn it into a major plot.`);
     if (events.minor?.action === 'continue') parts.push(`\nMINOR EVENT [CONTINUE]: carry the existing small development in “${events.minor.domainText}” only as far as its direct consequence requires, then allow it to leave focus. Do not duplicate it.`);
-    parts.push('\nApply all other active characterization, continuity, world, genre, prose, output, and USER_CONTROL instructions in their own scopes. This directive decides only the enabled categories above.', '</TURN_EXECUTION_DIRECTIVE>', '</Bias_Dice>', ')');
+    parts.push('\nApply all other active characterization, continuity, world, genre, prose, output, and USER_CONTROL instructions in their own scopes. This directive decides only the enabled categories above.', '</TURN_EXECUTION_DIRECTIVE>', ')');
     return { type, userText, rows, strategyRows, events, prompt: parts.join('\n'), createdAt: Date.now() };
 }
 
@@ -338,7 +353,7 @@ async function prepareGeneration(type, _options, dryRun) {
     if (isOoc(text)) {
         runtime.directive = null;
         setExtensionPrompt(PROMPT_KEY, '', extension_prompt_types.IN_CHAT, 0);
-        if (s.toasts) toastr.info('OOC 감지 — 주사위·사건·판독을 건너뜁니다.', '💬 Turn Director', { timeOut: 1800, preventDuplicates: true });
+        if (s.toasts) toastr.info('OOC 감지 — 주사위·사건·판독을 건너뜁니다.', '💬 굴려굴려', { timeOut: 1800, preventDuplicates: true });
         return;
     }
     if (type === 'continue' && !s.applyOnContinue) {
@@ -374,14 +389,14 @@ function showRollToast(result) {
     if (result.events.major?.action === 'start') bits.push('대형 사건 발생');
     if (result.events.minor?.action === 'start') bits.push('소형 사건 발생');
     if (!bits.length) bits.push('추가 판정 없음');
-    toastr.info(bits.join(' · '), '🎲 Turn Director', { timeOut: 1800, preventDuplicates: true });
+    toastr.info(bits.join(' · '), '🎲 굴려굴려', { timeOut: 1800, preventDuplicates: true });
 }
 
 function buildValidatorPrompt(assistantText, directive = runtime.directive) {
     const r = directive;
     return [
-        { role: 'system', content: `You are a strict compliance judge. The external directive is final and cannot be reinterpreted through characterization, realism, sympathy, warmth, compromise, or narrative preference. Judge functional outcomes, not stated intentions. Return only valid JSON with this schema: {"overall":"PASS|FAIL","direction":"PASS|FAIL|NA","strategy":"PASS|FAIL|NA","major":"PASS|FAIL|NA","minor":"PASS|FAIL|NA","majorStatus":"KEEP|RESOLVED|NA","reasonsKo":["short Korean reason"],"summaryKo":"detailed but concise Korean explanation"}. A negative AGAINST result fails if the character accepts, concedes, complies, implements, reconciles, or functionally carries out the TARGET, even with conditions or complaints. UNRESOLVED fails if settled. TOWARD fails if rejected. Mandatory expression must occur literally at the required level. Do not judge prose quality.` },
-        { role: 'user', content: `EXTERNAL DIRECTIVE:\n${r.prompt}\n\nLATEST USER IC INPUT:\n${r.userText}\n\nASSISTANT IC RESPONSE:\n${assistantText}` },
+        { role: 'system', content: `You are a strict compliance judge. Compare only the externally fixed directive with the functional outcome of the assistant IC response. The directive is final and cannot be reinterpreted through characterization, realism, sympathy, warmth, compromise, or narrative preference. Judge what the response actually does, not stated intentions. Do not require a separate latest-user-input field and never fail merely because no new user message exists; for a continuation, identify the active TARGET from the directive and the ongoing interaction visible in the response. Evaluate only enabled categories. Return only valid JSON with this schema: {"overall":"PASS|FAIL","direction":"PASS|FAIL|NA","strategy":"PASS|FAIL|NA","major":"PASS|FAIL|NA","minor":"PASS|FAIL|NA","majorStatus":"KEEP|RESOLVED|NA","reasonsKo":["short Korean reason"],"summaryKo":"detailed but concise Korean explanation"}. A negative AGAINST result fails if the character accepts, concedes, complies, implements, reconciles, or functionally carries out the TARGET, even with conditions or complaints. UNRESOLVED fails if settled. TOWARD fails if rejected. Mandatory expression must occur literally at the required level. Do not judge prose quality.` },
+        { role: 'user', content: `EXTERNAL DIRECTIVE:\n${r.prompt}\n\nASSISTANT IC RESPONSE:\n${assistantText}` },
     ];
 }
 
@@ -397,7 +412,7 @@ function latestAssistantExchange() {
                 break;
             }
         }
-        return { assistant, userText };
+        return { assistant, userText: userText || continuationContext(assistantIndex) };
     }
     return null;
 }
@@ -582,18 +597,18 @@ async function onMessageReceived(_messageId, type) {
         if (verdict.overall === 'PASS') {
             runtime.retrying = false;
             runtime.retries = 0;
-            toastr.success('방향·사건 판정 통과', '✅ Turn Director');
+            toastr.success('방향·사건 판정 통과', '✅ 굴려굴려');
             return;
         }
         const limit = retryLimit();
         if (runtime.retries >= limit) {
             runtime.retrying = false;
-            toastr.error(`판정 실패 · 재생성 ${runtime.retries}/${limit}`, '❌ Turn Director', { timeOut: 5000 });
+            toastr.error(`판정 실패 · 재생성 ${runtime.retries}/${limit}`, '❌ 굴려굴려', { timeOut: 5000 });
             return;
         }
         runtime.retries += 1;
         runtime.retrying = true;
-        toastr.warning(`판정 실패 · 기존 답변을 보존하고 새 스와이프 생성 ${runtime.retries}/${limit}`, '⚠️ Turn Director');
+        toastr.warning(`판정 실패 · 기존 답변을 보존하고 새 스와이프 생성 ${runtime.retries}/${limit}`, '⚠️ 굴려굴려');
         setTimeout(() => {
             const context = SillyTavern.getContext();
             if (context.chatMetadata !== sourceMetadata || (context.chat?.length ?? chat.length) !== sourceLength || runtime.directive !== sourceDirective) {
@@ -647,9 +662,9 @@ function refreshUi() {
 }
 
 function quickPanelHtml() {
-    return `<aside id="td_quick_popover" hidden aria-label="Turn Director 빠른 제어">
+    return `<aside id="td_quick_popover" popover="manual" hidden aria-label="굴려굴려 빠른 제어">
         <div class="td-quick-head">
-            <div><div class="td-quick-title">🎲 Turn Director</div><div id="td_quick_summary" class="td-quick-summary"></div></div>
+            <div><div class="td-quick-title">🎲 굴려굴려</div><div id="td_quick_summary" class="td-quick-summary"></div></div>
             <button type="button" id="td_quick_close" class="td-quick-close" aria-label="닫기">×</button>
         </div>
         <div class="td-quick-toggles">
@@ -683,7 +698,14 @@ function refreshQuickPanel() {
     $('#td_quick_minor_done').prop('disabled', st.minor.status !== 'active');
 }
 
-function hideQuickPanel() { $('#td_quick_popover').prop('hidden', true); }
+function hideQuickPanel() {
+    const element = document.getElementById('td_quick_popover');
+    if (!element) return;
+    try {
+        if (typeof element.hidePopover === 'function' && element.matches(':popover-open')) element.hidePopover();
+    } catch { /* Fall back to the hidden attribute. */ }
+    element.hidden = true;
+}
 
 function toggleQuickPanel() {
     const panel = $('#td_quick_popover');
@@ -691,6 +713,10 @@ function toggleQuickPanel() {
     if (opening) {
         refreshQuickPanel();
         panel.prop('hidden', false).css({ visibility: 'hidden' });
+        const element = panel[0];
+        try {
+            if (typeof element?.showPopover === 'function' && !element.matches(':popover-open')) element.showPopover();
+        } catch { /* Fixed-position fallback remains visible. */ }
         const anchor = document.getElementById('td_floating_button');
         if (anchor) {
             const rect = anchor.getBoundingClientRect();
@@ -714,7 +740,7 @@ function toggleQuickPanel() {
         panel.css({ visibility: 'visible' });
         return;
     }
-    panel.prop('hidden', true);
+    hideQuickPanel();
 }
 
 function applyPanelSize() {
@@ -824,10 +850,21 @@ function showPanel(tab = 'control') {
     applyPanelSize();
     $('.td-tab').removeClass('is-active').filter(`[data-tab="${tab}"]`).addClass('is-active');
     $('.td-tabpage').removeClass('is-active').filter(`[data-page="${tab}"]`).addClass('is-active');
-    $('#td_overlay').prop('hidden', false);
+    const overlay = document.getElementById('td_overlay');
+    if (!overlay) return;
+    if (overlay.parentElement !== document.body) document.body.appendChild(overlay);
+    if (!overlay.open) {
+        if (typeof overlay.showModal === 'function') overlay.showModal();
+        else overlay.setAttribute('open', '');
+    }
 }
 
-function hidePanel() { $('#td_overlay').prop('hidden', true); }
+function hidePanel() {
+    const overlay = document.getElementById('td_overlay');
+    if (!overlay) return;
+    if (overlay.open && typeof overlay.close === 'function') overlay.close();
+    else overlay.removeAttribute('open');
+}
 
 function fillProfiles() {
     const selects = $('#td_validation_profile,#td_settings_validation_profile');
@@ -847,10 +884,10 @@ function fillProfiles() {
 
 async function manualValidate() {
     try {
-        toastr.info('저장된 연결 프로필로 판독 중…', '🔎 Turn Director');
+        toastr.info('저장된 연결 프로필로 판독 중…', '🔎 굴려굴려');
         const result = await validateLatest({ manual: true });
         showPanel('status');
-        toastr[result.overall === 'PASS' ? 'success' : 'error'](result.overall === 'PASS' ? '판정 통과' : '판정 실패', 'Turn Director');
+        toastr[result.overall === 'PASS' ? 'success' : 'error'](result.overall === 'PASS' ? '판정 통과' : '판정 실패', '굴려굴려');
     } catch (error) { handleError(error, '수동 판독 실패'); }
 }
 
@@ -860,10 +897,10 @@ async function finishEvent(which) {
         : { status: 'idle', id: '', domain: '', fortune: '', cooldown: Number(settings().minorCooldown || 0) };
     await saveMetadata();
     refreshUi();
-    toastr.success(which === 'major' ? '대형 사건을 완료 처리했습니다.' : '소형 사건을 완료 처리했습니다.', '🎬 Turn Director');
+    toastr.success(which === 'major' ? '대형 사건을 완료 처리했습니다.' : '소형 사건을 완료 처리했습니다.', '🎬 굴려굴려');
 }
 
-function handleError(error, title = 'Turn Director 오류') {
+function handleError(error, title = '굴려굴려 오류') {
     console.error('[Turn Director]', error);
     toastr.error(error?.message || String(error), title, { timeOut: 7000 });
 }
@@ -873,7 +910,7 @@ function registerCommands() {
         console.warn('[Turn Director] Slash commands are unavailable in this SillyTavern version.');
         return;
     }
-    SlashCommandParser.addCommand('td-settings', () => { showPanel('control'); return ''; }, ['turn-director'], 'Turn Director 설정을 엽니다.');
+    SlashCommandParser.addCommand('td-settings', () => { showPanel('control'); return ''; }, ['turn-director'], '굴려굴려 설정을 엽니다.');
     SlashCommandParser.addCommand('td-status', () => { showPanel('status'); return ''; }, [], '현재 주사위 판정을 봅니다.');
     SlashCommandParser.addCommand('td-validate', async () => { await manualValidate(); return ''; }, [], '최신 답변을 수동 판독합니다.');
     SlashCommandParser.addCommand('td-major-done', async () => { await finishEvent('major'); return ''; }, [], '대형 사건을 완료 처리합니다.');
@@ -911,12 +948,12 @@ function bindUi() {
         st.major = { status: 'idle', id: '', domain: '', fortune: '', startedAt: 0, turns: 0 };
         st.minor = { status: 'idle', id: '', domain: '', fortune: '', cooldown: 0 };
         st.recentMinorDomains = [];
-        await saveMetadata(); refreshUi(); toastr.success('사건 상태와 중복 기록을 초기화했습니다.', 'Turn Director');
+        await saveMetadata(); refreshUi(); toastr.success('사건 상태와 중복 기록을 초기화했습니다.', '굴려굴려');
     });
     $(document).off('click.tdQuickButton', '#td_floating_button').on('click.tdQuickButton', '#td_floating_button', e => { e.preventDefault(); e.stopPropagation(); toggleQuickPanel(); });
     $(document).off('keydown.tdQuickButton', '#td_floating_button').on('keydown.tdQuickButton', '#td_floating_button', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleQuickPanel(); } });
     $('#extensionsMenu').off('click.tdWand', '#td_wand_entry').on('click.tdWand', '#td_wand_entry', e => {
-        e.preventDefault(); e.stopPropagation(); showPanel('control'); toastr.info('본 설정을 열었습니다.', '🎲 Turn Director', { timeOut: 1200 });
+        e.preventDefault(); e.stopPropagation(); showPanel('control'); toastr.info('본 설정을 열었습니다.', '🎲 굴려굴려', { timeOut: 1200 });
     });
     $('#td_quick_popover').on('pointerdown click', e => e.stopPropagation());
     $('#td_quick_close').on('click', hideQuickPanel);
@@ -929,10 +966,10 @@ function bindUi() {
         saveSettingsDebounced();
         syncInputs();
         const names = { directionEnabled: '캐릭터 방향', strategyEnabled: '답변 전략', majorEnabled: '대형 사건', minorEnabled: '소형 사건' };
-        toastr.info(`${names[key] || key}: ${this.checked ? 'ON' : 'OFF'}`, '🎲 Turn Director', { timeOut: 1200 });
+        toastr.info(`${names[key] || key}: ${this.checked ? 'ON' : 'OFF'}`, '🎲 굴려굴려', { timeOut: 1200 });
     });
-    $('#td_quick_settings').on('click', () => { showPanel('control'); toastr.info('본 설정을 열었습니다.', '🎲 Turn Director', { timeOut: 1200 }); });
-    $('#td_quick_status').on('click', () => { showPanel('status'); toastr.info('현재 판정을 열었습니다.', '🎲 Turn Director', { timeOut: 1200 }); });
+    $('#td_quick_settings').on('click', () => { showPanel('control'); toastr.info('본 설정을 열었습니다.', '🎲 굴려굴려', { timeOut: 1200 }); });
+    $('#td_quick_status').on('click', () => { showPanel('status'); toastr.info('현재 판정을 열었습니다.', '🎲 굴려굴려', { timeOut: 1200 }); });
     $('#td_quick_validate').on('click', () => { hideQuickPanel(); manualValidate(); });
     $('#td_quick_major_done').on('click', () => finishEvent('major'));
     $('#td_quick_minor_done').on('click', () => finishEvent('minor'));
@@ -953,34 +990,34 @@ jQuery(async () => {
         if (macros?.register) {
             try { macros.registry?.unregisterMacro?.('turn_director'); } catch { /* not registered */ }
             macros.register('turn_director', {
-                description: '현재 Turn Director 판정을 프리셋의 정확한 위치에 삽입합니다.',
+                description: '현재 굴려굴려 판정을 프리셋의 정확한 위치에 삽입합니다.',
                 handler: macroValue,
             });
         } else {
             try { unregisterMacro?.('turn_director'); } catch { /* not registered */ }
-            registerMacro?.('turn_director', macroValue, '현재 Turn Director 판정을 삽입합니다.');
+            registerMacro?.('turn_director', macroValue, '현재 굴려굴려 판정을 삽입합니다.');
         }
     } catch (error) {
-        handleError(error, 'Turn Director 매크로 등록 실패');
+        handleError(error, '굴려굴려 매크로 등록 실패');
     }
     let html;
     try {
         html = await $.get(SETTINGS_URL);
     } catch (error) {
-        handleError(error, 'Turn Director UI 로드 실패');
+        handleError(error, '굴려굴려 UI 로드 실패');
         return;
     }
     $('#extensions_settings').append(html);
     $('#td_overlay').appendTo('body');
     if (!$('#td_floating_button').length) {
-        const diceButton = $('<div id="td_floating_button" class="interactable" role="button" tabindex="0" title="Turn Director 빠른 제어" aria-label="Turn Director 빠른 제어">🎲</div>');
+        const diceButton = $('<div id="td_floating_button" class="interactable" role="button" tabindex="0" title="굴려굴려 빠른 제어" aria-label="굴려굴려 빠른 제어">🎲</div>');
         if ($('#send_but').length) diceButton.insertBefore('#send_but');
         else if ($('#rightSendForm').length) $('#rightSendForm').append(diceButton);
         else $('#send_form').append(diceButton);
     }
     if (!$('#td_quick_popover').length) $('body').append(quickPanelHtml());
     if (!$('#td_wand_container').length && $('#extensionsMenu').length) {
-        $('#extensionsMenu').append('<div id="td_wand_container" class="extension_container"><div id="td_wand_entry"><i class="fa-solid fa-dice fa-fw"></i><span>Turn Director</span></div></div>');
+        $('#extensionsMenu').append('<div id="td_wand_container" class="extension_container"><div id="td_wand_entry"><i class="fa-solid fa-dice fa-fw"></i><span>굴려굴려</span></div></div>');
     }
     fillProfiles();
     bindUi();
