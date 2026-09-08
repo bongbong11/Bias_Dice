@@ -380,11 +380,102 @@ function buildValidatorPrompt(assistantText) {
     ];
 }
 
+function extractValidatorText(raw, depth = 0) {
+    if (raw == null || depth > 6) return '';
+    if (typeof raw === 'string') return raw;
+    if (typeof raw === 'number' || typeof raw === 'boolean') return String(raw);
+    if (Array.isArray(raw)) {
+        return raw.map(item => extractValidatorText(item, depth + 1)).filter(Boolean).join('\n');
+    }
+    if (typeof raw !== 'object') return '';
+
+    if (raw.overall) return JSON.stringify(raw);
+
+    const preferred = [
+        raw.content,
+        raw.text,
+        raw.response,
+        raw.output_text,
+        raw.message?.content,
+        raw.choices?.[0]?.message?.content,
+        raw.choices?.[0]?.text,
+        raw.candidates?.[0]?.content?.parts,
+        raw.candidates?.[0]?.output,
+        raw.data?.content,
+        raw.data?.text,
+        raw.result?.content,
+        raw.result?.text,
+    ];
+
+    for (const value of preferred) {
+        const text = extractValidatorText(value, depth + 1).trim();
+        if (text) return text;
+    }
+
+    return '';
+}
+
+function findJsonObjects(text) {
+    const objects = [];
+    let start = -1;
+    let depth = 0;
+    let quoted = false;
+    let escaped = false;
+
+    for (let i = 0; i < text.length; i++) {
+        const char = text[i];
+        if (quoted) {
+            if (escaped) escaped = false;
+            else if (char === '\\') escaped = true;
+            else if (char === '"') quoted = false;
+            continue;
+        }
+        if (char === '"') {
+            quoted = true;
+        } else if (char === '{') {
+            if (depth === 0) start = i;
+            depth++;
+        } else if (char === '}' && depth > 0) {
+            depth--;
+            if (depth === 0 && start >= 0) {
+                objects.push(text.slice(start, i + 1));
+                start = -1;
+            }
+        }
+    }
+    return objects;
+}
+
 function parseJudge(raw) {
-    const text = String(raw?.content ?? raw ?? '').trim();
-    const match = text.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error('판독 모델이 JSON을 반환하지 않았습니다.');
-    const data = JSON.parse(match[0]);
+    if (raw && typeof raw === 'object' && !Array.isArray(raw) && raw.overall) {
+        raw.overall = String(raw.overall || '').toUpperCase();
+        if (!['PASS', 'FAIL'].includes(raw.overall)) throw new Error('PASS/FAIL 값을 판독할 수 없습니다.');
+        return raw;
+    }
+
+    const text = extractValidatorText(raw).replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+    if (!text) throw new Error('판독 모델의 응답 본문이 비어 있습니다. 연결 프로필과 모델을 확인해 주세요.');
+
+    let data;
+    try {
+        data = JSON.parse(text);
+    } catch {
+        for (const candidate of findJsonObjects(text)) {
+            try {
+                const parsed = JSON.parse(candidate);
+                if (parsed && typeof parsed === 'object' && parsed.overall) {
+                    data = parsed;
+                    break;
+                }
+            } catch {
+                // Try the next complete JSON object.
+            }
+        }
+    }
+
+    if (!data) {
+        throw new Error('판독 응답이 JSON 완성 전에 잘렸습니다. 판독 모델의 출력 한도를 확인해 주세요.');
+    }
     data.overall = String(data.overall || '').toUpperCase();
     if (!['PASS', 'FAIL'].includes(data.overall)) throw new Error('PASS/FAIL 값을 판독할 수 없습니다.');
     return data;
@@ -392,6 +483,7 @@ function parseJudge(raw) {
 
 async function validateLatest({ manual = false } = {}) {
     const s = settings();
+    const sourceMetadata = SillyTavern.getContext().chatMetadata;
     if (!runtime.directive) throw new Error('현재 턴에 저장된 판정이 없습니다.');
     if (runtime.directive.displayOnly) throw new Error('이 판정은 이전 채팅에서 복원된 표시용 기록입니다. 새 답변을 생성한 뒤 판독하세요.');
     if (!s.validationProfile) throw new Error('판독용 연결 프로필을 먼저 선택하세요.');
@@ -404,10 +496,13 @@ async function validateLatest({ manual = false } = {}) {
         const response = await ConnectionManagerRequestService.sendRequest(
             s.validationProfile,
             buildValidatorPrompt(last.mes),
-            550,
+            2048,
             { stream: false, extractData: true, includePreset: false, includeInstruct: false },
-            { temperature: 0, top_p: 0.1 },
+            { temperature: 0, top_p: 0.1, reasoning_effort: 'low', include_reasoning: false },
         );
+        if (SillyTavern.getContext().chatMetadata !== sourceMetadata) {
+            throw new Error('판독 중 채팅방이 변경되어 이전 판독 결과를 폐기했습니다.');
+        }
         runtime.lastValidation = { ...parseJudge(response), at: Date.now(), manual };
         state().lastValidation = compactValidation(runtime.lastValidation);
         if (runtime.lastValidation.majorStatus === 'RESOLVED' && state().major.status === 'active') {
@@ -432,8 +527,17 @@ async function onMessageReceived(_messageId, type) {
     const s = settings();
     if (s.validationMode !== 'auto' || !runtime.directive || runtime.validating) return;
     if (type === 'quiet' || isOoc(runtime.directive.userText)) return;
+    const sourceContext = SillyTavern.getContext();
+    const sourceMetadata = sourceContext.chatMetadata;
+    const sourceLength = sourceContext.chat?.length ?? chat.length;
+    const sourceDirective = runtime.directive;
     try {
         const verdict = await validateLatest();
+        const currentContext = SillyTavern.getContext();
+        if (currentContext.chatMetadata !== sourceMetadata || (currentContext.chat?.length ?? chat.length) !== sourceLength || runtime.directive !== sourceDirective) {
+            runtime.retrying = false;
+            return;
+        }
         if (verdict.overall === 'PASS') {
             runtime.retrying = false;
             runtime.retries = 0;
@@ -448,8 +552,15 @@ async function onMessageReceived(_messageId, type) {
         }
         runtime.retries += 1;
         runtime.retrying = true;
-        toastr.warning(`판정 실패 · 같은 주사위로 재생성 ${runtime.retries}/${limit}`, '⚠️ Turn Director');
-        setTimeout(() => Generate('regenerate').catch(handleError), 80);
+        toastr.warning(`판정 실패 · 기존 답변을 보존하고 새 스와이프 생성 ${runtime.retries}/${limit}`, '⚠️ Turn Director');
+        setTimeout(() => {
+            const context = SillyTavern.getContext();
+            if (context.chatMetadata !== sourceMetadata || (context.chat?.length ?? chat.length) !== sourceLength || runtime.directive !== sourceDirective) {
+                runtime.retrying = false;
+                return;
+            }
+            Generate('swipe').catch(error => { runtime.retrying = false; handleError(error, '스와이프 재생성 실패'); });
+        }, 80);
     } catch (error) {
         runtime.retrying = false;
         handleError(error, '판독 실패');
