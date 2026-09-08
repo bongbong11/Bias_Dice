@@ -1,0 +1,11 @@
+{
+  "display_name": "🎲 Turn Director",
+  "loading_order": 90,
+  "requires": [],
+  "optional": [],
+  "js": "index.js",
+  "css": "style.css",
+  "author": "Chatsi & Codex",
+  "version": "1.0.0",
+  "minimum_client_version": "1.17.0"
+}

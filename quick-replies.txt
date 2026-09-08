@@ -1,0 +1,16 @@
+Turn Director를 Quick Reply로 열고 싶다면 버튼 내용에 아래 명령을 하나씩 넣으세요.
+
+🎛️ 설정
+/td-settings
+
+🔎 판정 보기
+/td-status
+
+✅ 수동 판독
+/td-validate
+
+🎬 대형 완료
+/td-major-done
+
+✨ 소형 완료
+/td-minor-done

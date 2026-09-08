@@ -1,0 +1,43 @@
+#td_settings .td-settings-actions { display:flex; gap:.5rem; flex-wrap:wrap; }
+#td_settings .td-mini-summary { margin-top:.65rem; color:var(--SmartThemeBodyColor); opacity:.8; font-size:.9em; line-height:1.5; }
+.td-overlay[hidden] { display:none !important; }
+.td-overlay { position:fixed; inset:0; z-index:10050; display:grid; place-items:center; padding:18px; background:rgba(5,7,12,.66); backdrop-filter:blur(5px); }
+.td-panel { width:min(760px,96vw); max-height:min(860px,92vh); overflow:auto; color:var(--SmartThemeBodyColor); background:color-mix(in srgb,var(--SmartThemeBlurTintColor) 94%,#111827 6%); border:1px solid color-mix(in srgb,var(--SmartThemeBorderColor) 70%,transparent); border-radius:18px; box-shadow:0 24px 80px rgba(0,0,0,.38); }
+.td-panel-head { display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; padding:20px 22px 14px; }
+.td-panel-head h2 { margin:0; font-size:1.35rem; }
+.td-panel-head p { margin:.35rem 0 0; opacity:.66; font-size:.9rem; }
+.td-icon-btn { width:36px; height:36px; border:0; border-radius:10px; background:rgba(255,255,255,.07); color:inherit; font-size:1.7rem; cursor:pointer; }
+.td-tabs { display:flex; gap:6px; padding:0 22px 12px; border-bottom:1px solid rgba(255,255,255,.08); }
+.td-tab { padding:8px 15px; border:0; border-radius:999px; color:inherit; background:transparent; cursor:pointer; }
+.td-tab.is-active { background:rgba(130,110,255,.2); color:#cfc8ff; }
+.td-tabpage { display:none; padding:18px 22px 22px; }
+.td-tabpage.is-active { display:block; }
+.td-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+.td-card { padding:15px; border:1px solid rgba(255,255,255,.09); border-radius:14px; background:rgba(255,255,255,.035); }
+.td-card p { margin:.65rem 0 0; opacity:.72; font-size:.88rem; line-height:1.45; }
+.td-card-title { display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:12px; font-weight:700; }
+.td-wide { margin-top:12px; }
+.td-card label { display:grid; gap:5px; margin-top:10px; font-size:.88rem; opacity:.92; }
+.td-card select,.td-card input[type=number] { width:100%; }
+.td-form-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px 12px; }
+.td-switch { display:inline-flex !important; margin:0 !important; }
+.td-switch input { display:none; }
+.td-switch i { position:relative; width:42px; height:24px; border-radius:999px; background:rgba(255,255,255,.14); transition:.18s; }
+.td-switch i:after { content:""; position:absolute; width:18px; height:18px; left:3px; top:3px; border-radius:50%; background:#ddd; transition:.18s; }
+.td-switch input:checked+i { background:#7767e8; }
+.td-switch input:checked+i:after { transform:translateX(18px); background:#fff; }
+.td-check { display:flex !important; align-items:center; gap:8px !important; }
+.td-note { margin:12px 0 0; padding:10px 12px; border-radius:10px; background:rgba(119,103,232,.09); font-size:.82rem; opacity:.78; }
+.td-bottom-actions { display:flex; justify-content:flex-end; flex-wrap:wrap; gap:8px; margin-top:14px; }
+.td-primary { background:#6f60df !important; color:white !important; }
+.td-danger { color:#ffb3b3 !important; }
+.td-badge { padding:4px 8px; border-radius:999px; background:rgba(255,255,255,.07); font-size:.75rem; font-weight:500; opacity:.78; }
+.td-status { display:grid; gap:10px; }
+.td-status-section { padding:14px; border:1px solid rgba(255,255,255,.09); border-radius:13px; background:rgba(255,255,255,.03); }
+.td-status-section h3 { margin:0 0 8px; font-size:1rem; }
+.td-status-section p { margin:4px 0; line-height:1.48; }
+.td-status-section .td-muted { opacity:.62; }
+.td-pill { display:inline-block; margin:2px 4px 2px 0; padding:3px 8px; border-radius:999px; background:rgba(255,255,255,.075); font-size:.78rem; }
+#td_floating_button { position:absolute; right:48px; bottom:8px; z-index:7; width:34px; height:34px; display:grid; place-items:center; border-radius:10px; opacity:.78; cursor:pointer; user-select:none; }
+#td_floating_button:hover { opacity:1; background:rgba(119,103,232,.16); }
+@media (max-width:650px) { .td-grid,.td-form-grid { grid-template-columns:1fr; } .td-panel { max-height:94vh; } .td-tabpage { padding:15px; } .td-panel-head,.td-tabs { padding-left:15px; padding-right:15px; } }
