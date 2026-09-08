@@ -31,6 +31,7 @@ const defaults = {
     minorCooldown: 2,
     validationMode: 'off',
     validationProfile: '',
+    validationMaxTokens: 4096,
     retryMode: 'none',
     retryMax: 1,
     toasts: true,
@@ -496,7 +497,7 @@ async function validateLatest({ manual = false } = {}) {
         const response = await ConnectionManagerRequestService.sendRequest(
             s.validationProfile,
             buildValidatorPrompt(last.mes),
-            2048,
+            Math.min(32768, Math.max(512, Number(s.validationMaxTokens) || 4096)),
             { stream: false, extractData: true, includePreset: false, includeInstruct: false },
             { temperature: 0, top_p: 0.1, reasoning_effort: 'low', include_reasoning: false },
         );
@@ -673,6 +674,7 @@ function syncInputs() {
     $('#td_minor_cooldown').val(s.minorCooldown);
     $('#td_validation_mode').val(s.validationMode);
     $('#td_settings_validation_profile').val(s.validationProfile);
+    $('#td_validation_max_tokens').val(s.validationMaxTokens);
     $('#td_retry_mode').val(s.retryMode);
     $('#td_retry_max').val(s.retryMax);
     $('#td_toasts').prop('checked', s.toasts);
@@ -686,7 +688,7 @@ function updateDisabledStates() {
     $('#td_direction_mode,#td_direction_additional').prop('disabled', !s.directionEnabled);
     $('#td_major_chance').prop('disabled', !s.majorEnabled);
     $('#td_minor_chance,#td_minor_cooldown').prop('disabled', !s.minorEnabled);
-    $('#td_validation_profile,#td_retry_mode').prop('disabled', s.validationMode === 'off');
+    $('#td_validation_profile,#td_validation_max_tokens,#td_retry_mode').prop('disabled', s.validationMode === 'off');
     $('#td_retry_max').prop('disabled', s.validationMode === 'off' || s.retryMode !== 'fixed');
 }
 
@@ -776,6 +778,7 @@ function bindUi() {
     saveInput('#td_validation_mode', 'validationMode');
     saveInput('#td_validation_profile', 'validationProfile');
     saveInput('#td_settings_validation_profile', 'validationProfile');
+    saveInput('#td_validation_max_tokens', 'validationMaxTokens', value => Math.min(32768, Math.max(512, Number(value) || 4096)));
     saveInput('#td_retry_mode', 'retryMode');
     saveInput('#td_retry_max', 'retryMax', Number);
     saveInput('#td_toasts', 'toasts', Boolean);

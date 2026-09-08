@@ -71,11 +71,12 @@
         <div class="td-form-grid">
           <label>판독 방식<select id="td_validation_mode"><option value="off">사용 안 함 — 가장 빠름</option><option value="manual">수동 판독</option><option value="auto">매 답변 자동 판독</option></select></label>
           <label>판독 연결 프로필<select id="td_validation_profile"><option value="">선택 안 함</option></select></label>
+          <label>판독 최대 출력 토큰<input id="td_validation_max_tokens" type="number" min="512" max="32768" step="512"></label>
           <label>실패 시<select id="td_retry_mode"><option value="none">첫 출력 유지</option><option value="fixed">정한 횟수만 재생성</option><option value="until">통과할 때까지</option></select></label>
           <label>최대 재생성 횟수<input id="td_retry_max" type="number" min="1" max="12" step="1"></label>
         </div>
         <label class="td-check"><input id="td_toasts" type="checkbox"> 생성 전 판정을 짧은 알림으로 표시</label>
-        <p class="td-note">재생성은 현재 RP 모델을 그대로 사용합니다. 판독만 선택한 연결 프로필로 별도 실행됩니다. ‘통과할 때까지’에도 안전 상한 12회가 적용됩니다.</p>
+        <p class="td-note">재생성은 현재 RP 모델을 그대로 사용합니다. 판독만 선택한 연결 프로필로 별도 실행됩니다. Gemini처럼 내부 사고가 출력 예산을 함께 사용하는 모델은 4096~8192를 권장합니다. ‘통과할 때까지’에도 안전 상한 12회가 적용됩니다.</p>
       </article>
 
       <div class="td-bottom-actions">
