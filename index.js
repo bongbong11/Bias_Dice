@@ -1,7 +1,6 @@
 import {
     Generate,
     chat,
-    chat_metadata,
     extension_prompt_roles,
     extension_prompt_types,
     saveMetadata,
@@ -139,12 +138,68 @@ function settings() {
 }
 
 function state() {
-    chat_metadata[META_KEY] ||= {
+    const metadata = SillyTavern.getContext().chatMetadata;
+    if (!metadata) return {
+        major: { status: 'idle', id: '', domain: '', fortune: '', startedAt: 0, turns: 0 },
+        minor: { status: 'idle', id: '', domain: '', fortune: '', cooldown: 0 },
+        recentMinorDomains: [], lastDecision: null, lastValidation: null,
+    };
+    metadata[META_KEY] ||= {
         major: { status: 'idle', id: '', domain: '', fortune: '', startedAt: 0, turns: 0 },
         minor: { status: 'idle', id: '', domain: '', fortune: '', cooldown: 0 },
         recentMinorDomains: [],
+        lastDecision: null,
+        lastValidation: null,
     };
-    return chat_metadata[META_KEY];
+    const value = metadata[META_KEY];
+    value.major ||= { status: 'idle', id: '', domain: '', fortune: '', startedAt: 0, turns: 0 };
+    value.minor ||= { status: 'idle', id: '', domain: '', fortune: '', cooldown: 0 };
+    value.recentMinorDomains = Array.isArray(value.recentMinorDomains) ? value.recentMinorDomains.slice(0, 3) : [];
+    if (value.lastDecision === undefined) value.lastDecision = null;
+    if (value.lastValidation === undefined) value.lastValidation = null;
+    return value;
+}
+
+function compactDecision(result) {
+    if (!result) return null;
+    const compactEvent = event => event ? {
+        action: event.action,
+        domain: event.domain,
+        fortune: event.fortune,
+    } : null;
+    return {
+        displayOnly: true,
+        createdAt: Number(result.createdAt || Date.now()),
+        rows: (result.rows || []).map(row => ({
+            label: row.label,
+            reception: { label: row.reception?.label || '', end: row.reception?.end || '' },
+            intensity: [row.intensity?.[0] || ''],
+            disclosure: [row.disclosure?.[0] || ''],
+            execution: [row.execution?.[0] || ''],
+            expression: row.expression ? [row.expression[0] || ''] : null,
+        })),
+        strategyRows: (result.strategyRows || []).map(row => ({ label: row.label, ko: row.ko })),
+        events: {
+            major: compactEvent(result.events?.major),
+            minor: compactEvent(result.events?.minor),
+        },
+    };
+}
+
+function compactValidation(result) {
+    if (!result) return null;
+    return {
+        overall: result.overall,
+        summaryKo: result.summaryKo || '',
+        reasonsKo: Array.isArray(result.reasonsKo) ? result.reasonsKo.slice(0, 8) : [],
+        at: Number(result.at || Date.now()),
+    };
+}
+
+function restoreChatSnapshot() {
+    const st = state();
+    runtime.directive = st.lastDecision || null;
+    runtime.lastValidation = st.lastValidation || null;
 }
 
 const d = n => Math.floor(Math.random() * n);
@@ -162,7 +217,10 @@ function latestUserText(type) {
 }
 
 function isOoc(text) {
-    return /^\s*\(ooc\s*:/i.test(String(text || ''));
+    const directMatch = /^\s*(?:\(ooc\s*:|!?(?:ooc|오너)(?:\s*:|\s+|$))/i.test(String(text || ''));
+    const stored = String(SillyTavern.getContext().chatMetadata?.variables?.cot_ooc_input ?? '').trim().toLowerCase();
+    const storedMatch = !['', '[]', '0', 'false', 'null', 'undefined'].includes(stored);
+    return directMatch || storedMatch;
 }
 
 function makeDirectionRow(label, mode) {
@@ -277,7 +335,10 @@ async function prepareGeneration(type, _options, dryRun) {
         runtime.retries = 0;
         runtime.lastValidation = null;
         runtime.directive = compileDirective(type, text);
-        // Persist event state without delaying the RP request itself.
+        const st = state();
+        st.lastDecision = compactDecision(runtime.directive);
+        st.lastValidation = null;
+        // Persist only the compact latest result and event state without delaying the RP request itself.
         void saveMetadata().catch(error => console.warn('[Turn Director] Event state save failed', error));
         if (s.toasts) showRollToast(runtime.directive);
     }
@@ -320,6 +381,7 @@ function parseJudge(raw) {
 async function validateLatest({ manual = false } = {}) {
     const s = settings();
     if (!runtime.directive) throw new Error('현재 턴에 저장된 판정이 없습니다.');
+    if (runtime.directive.displayOnly) throw new Error('이 판정은 이전 채팅에서 복원된 표시용 기록입니다. 새 답변을 생성한 뒤 판독하세요.');
     if (!s.validationProfile) throw new Error('판독용 연결 프로필을 먼저 선택하세요.');
     if (!ConnectionManagerRequestService) throw new Error('이 SillyTavern 버전에서는 Connection Profile 판독 API를 사용할 수 없습니다.');
     const last = [...chat].reverse().find(m => !m?.is_user && !m?.is_system && String(m?.mes || '').trim());
@@ -335,10 +397,11 @@ async function validateLatest({ manual = false } = {}) {
             { temperature: 0, top_p: 0.1 },
         );
         runtime.lastValidation = { ...parseJudge(response), at: Date.now(), manual };
+        state().lastValidation = compactValidation(runtime.lastValidation);
         if (runtime.lastValidation.majorStatus === 'RESOLVED' && state().major.status === 'active') {
             state().major.status = 'idle';
-            await saveMetadata();
         }
+        await saveMetadata();
         refreshUi();
         return runtime.lastValidation;
     } finally {
@@ -461,7 +524,16 @@ function hideQuickPanel() { $('#td_quick_popover').prop('hidden', true); }
 function toggleQuickPanel() {
     const panel = $('#td_quick_popover');
     const opening = panel.prop('hidden');
-    if (opening) refreshQuickPanel();
+    if (opening) {
+        refreshQuickPanel();
+        const anchor = document.getElementById('td_floating_button');
+        if (anchor) {
+            const rect = anchor.getBoundingClientRect();
+            const width = Math.min(330, window.innerWidth - 14);
+            const left = Math.max(7, Math.min(rect.left, window.innerWidth - width - 7));
+            panel.css({ left: `${left}px`, right: 'auto', top: 'auto', bottom: `${Math.max(7, window.innerHeight - rect.top + 7)}px` });
+        }
+    }
     panel.prop('hidden', !opening);
 }
 
@@ -590,9 +662,15 @@ function bindUi() {
     $('#td_major_done').on('click', () => finishEvent('major'));
     $('#td_minor_done').on('click', () => finishEvent('minor'));
     $('#td_event_reset').on('click', async () => {
-        delete chat_metadata[META_KEY]; state(); await saveMetadata(); refreshUi(); toastr.success('사건 상태와 중복 기록을 초기화했습니다.', 'Turn Director');
+        const st = state();
+        st.major = { status: 'idle', id: '', domain: '', fortune: '', startedAt: 0, turns: 0 };
+        st.minor = { status: 'idle', id: '', domain: '', fortune: '', cooldown: 0 };
+        st.recentMinorDomains = [];
+        await saveMetadata(); refreshUi(); toastr.success('사건 상태와 중복 기록을 초기화했습니다.', 'Turn Director');
     });
-    $('#td_floating_button,#td_wand_entry').on('click', e => { e.preventDefault(); e.stopPropagation(); toggleQuickPanel(); });
+    $('#td_floating_button').on('click', e => { e.preventDefault(); e.stopPropagation(); toggleQuickPanel(); });
+    $('#td_floating_button').on('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleQuickPanel(); } });
+    $('#td_wand_entry').on('click', e => { e.preventDefault(); e.stopPropagation(); showPanel('control'); });
     $('#td_quick_popover').on('pointerdown click', e => e.stopPropagation());
     $('#td_quick_close').on('click', hideQuickPanel);
     $(document).off('pointerdown.tdQuick').on('pointerdown.tdQuick', e => {
@@ -638,18 +716,31 @@ jQuery(async () => {
     }
     const html = await $.get(SETTINGS_URL);
     $('#extensions_settings').append(html);
-    if (!$('#td_floating_button').length) $('body').append('<button type="button" id="td_floating_button" title="Turn Director 빠른 제어" aria-label="Turn Director 빠른 제어">🎲</button>');
+    if (!$('#td_floating_button').length) {
+        const diceButton = $('<div id="td_floating_button" class="interactable" role="button" tabindex="0" title="Turn Director 빠른 제어" aria-label="Turn Director 빠른 제어">🎲</div>');
+        if ($('#extensionsMenuButton').length) diceButton.insertAfter('#extensionsMenuButton');
+        else if ($('#leftSendForm').length) $('#leftSendForm').append(diceButton);
+        else $('#send_form').append(diceButton);
+    }
     if (!$('#td_quick_popover').length) $('body').append(quickPanelHtml());
     if (!$('#td_wand_container').length && $('#extensionsMenu').length) {
         $('#extensionsMenu').append('<div id="td_wand_container" class="extension_container"><div id="td_wand_entry"><i class="fa-solid fa-dice fa-fw"></i><span>Turn Director</span></div></div>');
     }
     fillProfiles();
     bindUi();
+    restoreChatSnapshot();
     syncInputs();
     registerCommands();
     eventSource.on(event_types.GENERATION_AFTER_COMMANDS, prepareGeneration);
     eventSource.on(event_types.MESSAGE_RECEIVED, onMessageReceived);
-    if (event_types.CHAT_CHANGED) eventSource.on(event_types.CHAT_CHANGED, () => { runtime.turnKey = ''; runtime.directive = null; runtime.lastValidation = null; runtime.retries = 0; runtime.retrying = false; refreshUi(); });
+    if (event_types.CHAT_CHANGED) eventSource.on(event_types.CHAT_CHANGED, () => {
+        runtime.turnKey = '';
+        runtime.retries = 0;
+        runtime.retrying = false;
+        setExtensionPrompt(PROMPT_KEY, '', extension_prompt_types.IN_CHAT, 0);
+        restoreChatSnapshot();
+        refreshUi();
+    });
     if (event_types.CONNECTION_PROFILE_LOADED) eventSource.on(event_types.CONNECTION_PROFILE_LOADED, fillProfiles);
     console.info('[Turn Director] loaded');
 });
