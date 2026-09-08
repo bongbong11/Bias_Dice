@@ -281,11 +281,7 @@ async function prepareGeneration(type, _options, dryRun) {
         if (s.toasts) toastr.info('OOC 감지 — 주사위·사건·판독을 건너뜁니다.', '💬 굴려굴려', { timeOut: 1800, preventDuplicates: true });
         return;
     }
-    if (type === 'continue' && !s.applyOnContinue) {
-        runtime.directive = null;
-        setExtensionPrompt(PROMPT_KEY, '', extension_prompt_types.IN_CHAT, 0);
-        return;
-    }
+   
     const key = `${type === 'regenerate' && runtime.retrying ? 'retry' : type}|${chat.length}|${text}`;
     if (!(runtime.retrying && runtime.directive) && (runtime.turnKey !== key || !runtime.directive)) {
         runtime.turnKey = key;
