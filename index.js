@@ -373,12 +373,46 @@ function showRollToast(result) {
     toastr.info(bits.join(' · '), '🎲 Turn Director', { timeOut: 1800, preventDuplicates: true });
 }
 
-function buildValidatorPrompt(assistantText) {
-    const r = runtime.directive;
+function buildValidatorPrompt(assistantText, directive = runtime.directive) {
+    const r = directive;
     return [
         { role: 'system', content: `You are a strict compliance judge. The external directive is final and cannot be reinterpreted through characterization, realism, sympathy, warmth, compromise, or narrative preference. Judge functional outcomes, not stated intentions. Return only valid JSON with this schema: {"overall":"PASS|FAIL","direction":"PASS|FAIL|NA","strategy":"PASS|FAIL|NA","major":"PASS|FAIL|NA","minor":"PASS|FAIL|NA","majorStatus":"KEEP|RESOLVED|NA","reasonsKo":["short Korean reason"],"summaryKo":"detailed but concise Korean explanation"}. A negative AGAINST result fails if the character accepts, concedes, complies, implements, reconciles, or functionally carries out the TARGET, even with conditions or complaints. UNRESOLVED fails if settled. TOWARD fails if rejected. Mandatory expression must occur literally at the required level. Do not judge prose quality.` },
         { role: 'user', content: `EXTERNAL DIRECTIVE:\n${r.prompt}\n\nLATEST USER IC INPUT:\n${r.userText}\n\nASSISTANT IC RESPONSE:\n${assistantText}` },
     ];
+}
+
+function latestAssistantExchange() {
+    for (let assistantIndex = chat.length - 1; assistantIndex >= 0; assistantIndex--) {
+        const assistant = chat[assistantIndex];
+        if (assistant?.is_user || assistant?.is_system || !String(assistant?.mes || '').trim()) continue;
+        let userText = '';
+        for (let userIndex = assistantIndex - 1; userIndex >= 0; userIndex--) {
+            const message = chat[userIndex];
+            if (message?.is_user && !message?.is_system) {
+                userText = String(message?.mes || '').trim();
+                break;
+            }
+        }
+        return { assistant, userText };
+    }
+    return null;
+}
+
+function restoreValidationDirective(saved, userText) {
+    const lines = [
+        'RESTORED EXTERNAL DIRECTIVE FOR THE LATEST ASSISTANT IC RESPONSE.',
+        'Judge the saved outcomes exactly. Characterization or narrative preference cannot alter them.',
+    ];
+    for (const row of saved.rows || []) {
+        lines.push(`CHARACTER: ${row.label}. Required end state: ${row.reception?.end || 'NA'} (${row.reception?.label || ''}). Intensity: ${row.intensity?.[0] || 'NA'}. Disclosure: ${row.disclosure?.[0] || 'NA'}. Execution: ${row.execution?.[0] || 'NA'}.${row.expression?.[0] ? ` Mandatory expression: ${row.expression[0]}.` : ''}`);
+    }
+    for (const row of saved.strategyRows || []) {
+        lines.push(`ANSWER STRATEGY: ${row.label}: ${row.ko || 'NA'}.`);
+    }
+    for (const [size, event] of Object.entries(saved.events || {})) {
+        if (event) lines.push(`${size.toUpperCase()} EVENT: action=${event.action || 'NA'}; domain=${event.domain || 'NA'}; fortune=${event.fortune || 'NA'}.`);
+    }
+    return { ...saved, displayOnly: false, restored: true, userText, prompt: lines.join('\n') };
 }
 
 function extractValidatorText(raw, depth = 0) {
@@ -486,17 +520,19 @@ async function validateLatest({ manual = false } = {}) {
     const s = settings();
     const sourceMetadata = SillyTavern.getContext().chatMetadata;
     if (!runtime.directive) throw new Error('현재 턴에 저장된 판정이 없습니다.');
-    if (runtime.directive.displayOnly) throw new Error('이 판정은 이전 채팅에서 복원된 표시용 기록입니다. 새 답변을 생성한 뒤 판독하세요.');
     if (!s.validationProfile) throw new Error('판독용 연결 프로필을 먼저 선택하세요.');
     if (!ConnectionManagerRequestService) throw new Error('이 SillyTavern 버전에서는 Connection Profile 판독 API를 사용할 수 없습니다.');
-    const last = [...chat].reverse().find(m => !m?.is_user && !m?.is_system && String(m?.mes || '').trim());
-    if (!last) throw new Error('판독할 최신 IC 답변이 없습니다.');
+    const exchange = latestAssistantExchange();
+    if (!exchange) throw new Error('판독할 최신 IC 답변이 없습니다.');
+    const directive = runtime.directive.displayOnly
+        ? restoreValidationDirective(runtime.directive, exchange.userText)
+        : runtime.directive;
     if (runtime.validating) return runtime.lastValidation;
     runtime.validating = true;
     try {
         const response = await ConnectionManagerRequestService.sendRequest(
             s.validationProfile,
-            buildValidatorPrompt(last.mes),
+            buildValidatorPrompt(exchange.assistant.mes, directive),
             Math.min(32768, Math.max(512, Number(s.validationMaxTokens) || 4096)),
             { stream: false, extractData: true, includePreset: false, includeInstruct: false },
             { temperature: 0, top_p: 0.1, reasoning_effort: 'low', include_reasoning: false },
