@@ -212,11 +212,18 @@ function rollEvents(turnIndex) {
     return result;
 }
 
+function activeCharacterName() {
+    const context = SillyTavern.getContext();
+    const character = context?.characters?.[context?.characterId];
+    const raw = context?.name2 || character?.name || 'primary character';
+    return String(raw).replace(/[\r\n]+/g, ' ').trim() || 'primary character';
+}
+
 function compileDirective(type, userText) {
     const s = settings();
     const turnIndex = chat.length;
-    const labels = ['primary {{char}}'];
-    if (s.additionalCharacters) labels.push('additional participating character 1', 'additional participating character 2', 'additional participating character 3', 'additional participating character 4');
+    const labels = [activeCharacterName()];
+    if (s.additionalCharacters) labels.push('미배정 (추가 참여 인물 1)', '미배정 (추가 참여 인물 2)', '미배정 (추가 참여 인물 3)', '미배정 (추가 참여 인물 4)');
     const rows = s.directionEnabled ? labels.map(label => makeDirectionRow(label, s.directionMode)) : [];
     const strategyRows = s.strategyEnabled ? labels.map(label => makeStrategy(label)) : [];
     const events = rollEvents(turnIndex);
@@ -231,7 +238,7 @@ function compileDirective(type, userText) {
         rows.forEach((row, index) => {
             parts.push(`${index + 1}. ${row.label}: END STATE [${row.reception.end}]. ${row.reception.text}. Strength: ${row.intensity[1]}. External visibility: ${row.disclosure[1]}. Follow-through: ${row.execution[1]}.${row.expression ? ` Mandatory expression: ${row.expression[1]}.` : ''} The reply must end with this result still functionally intact; warmth, humor, attraction, tenderness, explanation, conditions, or compromise cannot repair or neutralize an AGAINST result.`);
         });
-        parts.push('Use additional rows only for distinct assistant-controlled characters who materially participate, in order of first active participation. Mere presence, mention, or observation does not qualify. Discard unused rows.');
+        parts.push('Rows marked 미배정 are unassigned slots. Assign them internally only to distinct assistant-controlled characters who materially participate, in order of first active participation. Mere presence, mention, or observation does not qualify. Discard unused rows.');
     }
     if (strategyRows.length) {
         parts.push('\nANSWER STRATEGIES');
@@ -390,7 +397,7 @@ function statusHtml() {
     const v = runtime.lastValidation;
     if (!r) return '<div class="td-status-section"><h3>아직 판정 없음</h3><p class="td-muted">IC 답변을 한 번 생성하면 이곳에 현재 턴의 해석이 표시됩니다.</p></div>';
     const rows = r.rows.map(x => `<p><b>${esc(x.label)}</b> — ${esc(x.reception.label)}, ${esc(x.intensity[0])}, ${esc(x.disclosure[0])}, ${esc(x.execution[0])}${x.expression ? ` · 필수 표현: ${esc(x.expression[0])}` : ''}</p>`).join('') || '<p class="td-muted">사용 안 함</p>';
-    const strategy = r.strategyRows.map(x => `<span class="td-pill">${esc(x.label)}: ${esc(x.ko)}</span>`).join('') || '<span class="td-muted">사용 안 함</span>';
+    const strategy = r.strategyRows.map(x => `<p><b>${esc(x.label)}</b> — ${esc(x.ko)}</p>`).join('') || '<p class="td-muted">사용 안 함</p>';
     const events = [r.events.major ? `대형: ${r.events.major.action === 'start' ? '새로 발생' : r.events.major.action === 'surface' ? '이번 턴 진행' : '배경에서 유지'} · ${r.events.major.domain} · ${r.events.major.fortune}` : '대형: 없음', r.events.minor ? `소형: ${r.events.minor.action === 'start' ? '새로 발생' : '직접 결과 진행'} · ${r.events.minor.domain} · ${r.events.minor.fortune}` : '소형: 없음'].map(x => `<p>${esc(x)}</p>`).join('');
     const validation = v ? `<p><b>${v.overall === 'PASS' ? '✅ 통과' : '❌ 실패'}</b></p><p>${esc(v.summaryKo || '')}</p>${(v.reasonsKo || []).map(x => `<p>• ${esc(x)}</p>`).join('')}<p class="td-muted">재생성 사용: ${runtime.retries}회</p>` : '<p class="td-muted">아직 판독하지 않았습니다.</p>';
     return `<div class="td-status-section"><h3>🎭 캐릭터 판정</h3>${rows}</div><div class="td-status-section"><h3>🗣️ 답변 전략</h3>${strategy}</div><div class="td-status-section"><h3>🎬 사건</h3>${events}</div><div class="td-status-section"><h3>🔎 답변 검증</h3>${validation}</div>`;
@@ -409,6 +416,53 @@ function refreshUi() {
     $('#td_status_content').html(statusHtml());
     $('#td_event_content').html(eventHtml());
     $('#td_profile_badge').text(s.validationProfile ? '별도 프로필 사용' : '프로필 미선택');
+    refreshQuickPanel();
+}
+
+function quickPanelHtml() {
+    return `<aside id="td_quick_popover" hidden aria-label="Turn Director 빠른 제어">
+        <div class="td-quick-head">
+            <div><div class="td-quick-title">🎲 Turn Director</div><div id="td_quick_summary" class="td-quick-summary"></div></div>
+            <button type="button" id="td_quick_close" class="td-quick-close" aria-label="닫기">×</button>
+        </div>
+        <div class="td-quick-toggles">
+            <label class="td-quick-toggle"><input type="checkbox" data-td-quick="directionEnabled"><span>캐릭터 방향</span></label>
+            <label class="td-quick-toggle"><input type="checkbox" data-td-quick="strategyEnabled"><span>답변 전략</span></label>
+            <label class="td-quick-toggle"><input type="checkbox" data-td-quick="majorEnabled"><span>대형 사건</span></label>
+            <label class="td-quick-toggle"><input type="checkbox" data-td-quick="minorEnabled"><span>소형 사건</span></label>
+        </div>
+        <div class="td-quick-actions">
+            <button type="button" id="td_quick_status" class="menu_button">판정 보기</button>
+            <button type="button" id="td_quick_validate" class="menu_button">수동 판독</button>
+            <button type="button" id="td_quick_settings" class="menu_button">설정</button>
+            <button type="button" id="td_quick_major_done" class="menu_button">대형 완료</button>
+            <button type="button" id="td_quick_minor_done" class="menu_button">소형 완료</button>
+        </div>
+    </aside>`;
+}
+
+function refreshQuickPanel() {
+    if (!$('#td_quick_popover').length) return;
+    const s = settings();
+    const st = state();
+    $('[data-td-quick]').each(function () {
+        const key = $(this).attr('data-td-quick');
+        $(this).prop('checked', Boolean(s[key]));
+    });
+    const direction = s.directionEnabled ? (s.directionMode === 'negative' ? '부정' : '일반') : 'OFF';
+    const validation = s.validationMode === 'auto' ? '자동 판독' : s.validationMode === 'manual' ? '수동 판독' : '판독 OFF';
+    $('#td_quick_summary').text(`캐릭터 ${direction} · ${validation} · 대형 ${st.major.status === 'active' ? '진행 중' : '대기'} · 소형 ${st.minor.status === 'active' ? '진행 중' : '대기'}`);
+    $('#td_quick_major_done').prop('disabled', st.major.status !== 'active');
+    $('#td_quick_minor_done').prop('disabled', st.minor.status !== 'active');
+}
+
+function hideQuickPanel() { $('#td_quick_popover').prop('hidden', true); }
+
+function toggleQuickPanel() {
+    const panel = $('#td_quick_popover');
+    const opening = panel.prop('hidden');
+    if (opening) refreshQuickPanel();
+    panel.prop('hidden', !opening);
 }
 
 function syncInputs() {
@@ -453,6 +507,7 @@ function saveInput(id, key, transform = value => value) {
 }
 
 function showPanel(tab = 'control') {
+    hideQuickPanel();
     syncInputs();
     $('.td-tab').removeClass('is-active').filter(`[data-tab="${tab}"]`).addClass('is-active');
     $('.td-tabpage').removeClass('is-active').filter(`[data-page="${tab}"]`).addClass('is-active');
@@ -525,7 +580,7 @@ function bindUi() {
     saveInput('#td_retry_max', 'retryMax', Number);
     saveInput('#td_toasts', 'toasts', Boolean);
     saveInput('#td_injection_mode', 'injectionMode');
-    $('#td_open_panel,#td_floating_button').on('click', () => showPanel('control'));
+    $('#td_open_panel').on('click', () => showPanel('control'));
     $('#td_open_status').on('click', () => showPanel('status'));
     $('#td_close,#td_save_close').on('click', hidePanel);
     $('#td_overlay').on('click', e => { if (e.target.id === 'td_overlay') hidePanel(); });
@@ -537,6 +592,23 @@ function bindUi() {
     $('#td_event_reset').on('click', async () => {
         delete chat_metadata[META_KEY]; state(); await saveMetadata(); refreshUi(); toastr.success('사건 상태와 중복 기록을 초기화했습니다.', 'Turn Director');
     });
+    $('#td_floating_button,#td_wand_entry').on('click', e => { e.preventDefault(); e.stopPropagation(); toggleQuickPanel(); });
+    $('#td_quick_popover').on('pointerdown click', e => e.stopPropagation());
+    $('#td_quick_close').on('click', hideQuickPanel);
+    $(document).off('pointerdown.tdQuick').on('pointerdown.tdQuick', e => {
+        if (!$(e.target).closest('#td_quick_popover,#td_floating_button,#td_wand_entry').length) hideQuickPanel();
+    });
+    $('[data-td-quick]').on('change', function () {
+        const key = $(this).attr('data-td-quick');
+        settings()[key] = this.checked;
+        saveSettingsDebounced();
+        syncInputs();
+    });
+    $('#td_quick_settings').on('click', () => showPanel('control'));
+    $('#td_quick_status').on('click', () => showPanel('status'));
+    $('#td_quick_validate').on('click', () => { hideQuickPanel(); manualValidate(); });
+    $('#td_quick_major_done').on('click', () => finishEvent('major'));
+    $('#td_quick_minor_done').on('click', () => finishEvent('minor'));
 }
 
 jQuery(async () => {
@@ -566,7 +638,11 @@ jQuery(async () => {
     }
     const html = await $.get(SETTINGS_URL);
     $('#extensions_settings').append(html);
-    if (!$('#td_floating_button').length) $('body').append('<button type="button" id="td_floating_button" title="Turn Director 설정">🎲</button>');
+    if (!$('#td_floating_button').length) $('body').append('<button type="button" id="td_floating_button" title="Turn Director 빠른 제어" aria-label="Turn Director 빠른 제어">🎲</button>');
+    if (!$('#td_quick_popover').length) $('body').append(quickPanelHtml());
+    if (!$('#td_wand_container').length && $('#extensionsMenu').length) {
+        $('#extensionsMenu').append('<div id="td_wand_container" class="extension_container"><div id="td_wand_entry"><i class="fa-solid fa-dice fa-fw"></i><span>Turn Director</span></div></div>');
+    }
     fillProfiles();
     bindUi();
     syncInputs();
