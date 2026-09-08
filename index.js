@@ -20,8 +20,7 @@ let SlashCommandParser;
 let ConnectionManagerRequestService;
 
 const defaults = {
-    directionEnabled: true,
-    directionMode: 'general',
+    masterEnabled: true,
     additionalCharacters: true,
     strategyEnabled: false,
     majorEnabled: false,
@@ -51,63 +50,6 @@ const runtime = {
     lastGenerationType: '',
 };
 
-const generalReception = [
-    { key: 'against_strong', label: '강한 반대', end: 'AGAINST', text: 'strongly oppose or reject the TARGET itself; do not accept, concede, comply, reconcile, or carry it out' },
-    { key: 'against', label: '반대', end: 'AGAINST', text: 'oppose or reject the TARGET itself; conditions, complaints, or reluctance cannot turn acceptance into this result' },
-    { key: 'against_mild', label: '약한 반대', end: 'AGAINST', text: 'lean against the TARGET and end without accepting, agreeing, conceding, or carrying it out' },
-    { key: 'unresolved', label: '미결·혼합', end: 'UNRESOLVED', text: 'remain genuinely unresolved; do not accept, reject, settle, implement, reconcile, or irreversibly commit' },
-    { key: 'toward_mild', label: '약한 긍정', end: 'TOWARD', text: 'lean toward the TARGET and remain positive without rejecting or refusing it' },
-    { key: 'toward', label: '긍정', end: 'TOWARD', text: 'accept, support, or move toward the TARGET itself; warmth attached to a rejection does not qualify' },
-    { key: 'toward_strong', label: '강한 긍정', end: 'TOWARD', text: 'strongly accept, support, or embrace the TARGET itself; resistance or rejection cannot be the outcome' },
-];
-
-const negativeReception = [
-    ...Array(4).fill(generalReception[0]),
-    ...Array(6).fill(generalReception[1]),
-    ...Array(4).fill(generalReception[2]),
-    ...Array(2).fill(generalReception[3]),
-    ...Array(2).fill(generalReception[4]),
-    generalReception[5],
-    generalReception[6],
-];
-
-const intensityGeneral = [
-    ['최소', 'minimal'], ['약함', 'mild'], ['보통', 'moderate'], ['강함', 'strong'], ['매우 강함', 'very strong'],
-];
-const intensityNegative = [
-    ['보통', 'moderate'], ['보통', 'moderate'],
-    ['강함', 'strong'], ['강함', 'strong'], ['강함', 'strong'], ['강함', 'strong'],
-    ['매우 강함', 'very strong'], ['매우 강함', 'very strong'], ['매우 강함', 'very strong'], ['매우 강함', 'very strong'],
-];
-const disclosureGeneral = [
-    ['거의 숨김', 'mostly concealed'], ['일부 드러남', 'partly apparent'], ['상당히 드러남', 'largely apparent'], ['공개적으로 표현', 'openly expressed'],
-];
-const disclosureNegative = [
-    ['일부 드러남', 'partly apparent'], ['일부 드러남', 'partly apparent'],
-    ['상당히 드러남', 'largely apparent'], ['상당히 드러남', 'largely apparent'], ['상당히 드러남', 'largely apparent'], ['상당히 드러남', 'largely apparent'],
-    ['공개적으로 표현', 'openly expressed'], ['공개적으로 표현', 'openly expressed'], ['공개적으로 표현', 'openly expressed'], ['공개적으로 표현', 'openly expressed'],
-];
-const executionGeneral = [
-    ['반응만', 'make no new move that materially commits to or settles the TARGET beyond the immediate response; this does not restrict unrelated dialogue, movement, initiative, secondary actions, or scene development'],
-    ['작은 움직임', 'make one small conversational or practical move concerning the TARGET without materially settling it; other character-driven initiative remains unrestricted'],
-    ['명확한 단계', 'take a clear observable step concerning the TARGET consistent with the assigned response; do not treat this as a cap on unrelated activity'],
-    ['적극적 시도', 'actively attempt to influence the TARGET interaction or situation; other motives, actions, and scene developments may proceed normally'],
-    ['결정적 실행', 'follow through decisively on the TARGET response, including an appropriate response to immediate resistance or consequences; the rest of the turn need not center on the TARGET'],
-];
-const executionNegative = [
-    ['명확한 반대 행동', 'take a clear observable step against the TARGET consistent with the negative response; do not suppress unrelated character-driven activity'],
-    ['명확한 반대 행동', 'take a clear observable step against the TARGET consistent with the negative response; do not suppress unrelated character-driven activity'],
-    ...Array(4).fill(['적극적 반대', 'actively oppose, reject, resist, confront, withdraw from, or otherwise act against the TARGET; other motives, dialogue, and scene actions remain free to continue']),
-    ...Array(4).fill(['결정적 반대 실행', 'follow through decisively against the TARGET and respond to immediate resistance or consequences; this does not require the rest of the turn to remain focused on the TARGET']),
-];
-const negativeExpressions = [
-    ['차가운 절제', 'cold restraint that remains unmistakably adverse'],
-    ['철수·침묵', 'withdrawal, refusal to engage, or deliberate silence that has an immediate effect'],
-    ['직설적 대립', 'blunt confrontation'],
-    ['분명한 분노·욕설', 'visible anger or idiomatic profanity'],
-    ['목소리를 높이거나 소리침', 'a raised voice or at least one unmistakable shout'],
-    ['물리적·파괴적 격화', 'a concrete physical or destructive escalation directed at a plausible target; do not substitute posture, implication, fantasy, or a harmless gesture'],
-];
 const strategies = [
     ...Array(6).fill(['직접적인 진실', 'answer with direct truth']),
     ...Array(2).fill(['선택적 진실', 'answer truthfully but select what to reveal']),
@@ -173,14 +115,6 @@ function compactDecision(result) {
     return {
         displayOnly: true,
         createdAt: Number(result.createdAt || Date.now()),
-        rows: (result.rows || []).map(row => ({
-            label: row.label,
-            reception: { label: row.reception?.label || '', end: row.reception?.end || '' },
-            intensity: [row.intensity?.[0] || ''],
-            disclosure: [row.disclosure?.[0] || ''],
-            execution: [row.execution?.[0] || ''],
-            expression: row.expression ? [row.expression[0] || ''] : null,
-        })),
         strategyRows: (result.strategyRows || []).map(row => ({ label: row.label, ko: row.ko })),
         events: {
             major: compactEvent(result.events?.major),
@@ -239,15 +173,6 @@ function isOoc(text) {
     return directMatch || storedMatch;
 }
 
-function makeDirectionRow(label, mode) {
-    const reception = mode === 'negative' ? pick(negativeReception) : pick(generalReception);
-    const intensity = pick(mode === 'negative' ? intensityNegative : intensityGeneral);
-    const disclosure = pick(mode === 'negative' ? disclosureNegative : disclosureGeneral);
-    const execution = pick(mode === 'negative' ? executionNegative : executionGeneral);
-    const expression = mode === 'negative' && reception.end === 'AGAINST' ? pick(negativeExpressions) : null;
-    return { label, reception, intensity, disclosure, execution, expression };
-}
-
 function makeStrategy(label) {
     const value = pick(strategies);
     return { label, ko: value[0], text: value[1] };
@@ -298,7 +223,6 @@ function compileDirective(type, userText) {
     const turnIndex = chat.length;
     const labels = [activeCharacterName()];
     if (s.additionalCharacters) labels.push('미배정 (추가 참여 인물 1)', '미배정 (추가 참여 인물 2)', '미배정 (추가 참여 인물 3)', '미배정 (추가 참여 인물 4)');
-    const rows = s.directionEnabled ? labels.map(label => makeDirectionRow(label, s.directionMode)) : [];
     const strategyRows = s.strategyEnabled ? labels.map(label => makeStrategy(label)) : [];
     const events = rollEvents(turnIndex);
     const isContinuation = String(userText || '').startsWith(CONTINUATION_MARKER);
@@ -308,24 +232,15 @@ function compileDirective(type, userText) {
     const parts = [
         '(OOC: Continue the current roleplay and output only the resulting IC scene.',
         '',
-        'The following dice results are externally fixed. Apply them exactly as assigned to the TARGET. Do not reinterpret them according to what seems kinder, more reasonable, cooperative, realistic, romantic, or narratively satisfying.',
+        'The following enabled dice results are externally fixed. Apply only the enabled categories exactly as assigned. Do not reinterpret them according to what seems kinder, more reasonable, cooperative, realistic, romantic, or narratively satisfying.',
         '',
-        'The dice constrain only each assigned character\'s response to the TARGET. Characterization determines the motive, wording, and specific form of that response, but cannot change, soften, reverse, evade, repair, or replace its assigned direction, TARGET-stance intensity, TARGET-stance visibility, TARGET follow-through, or mandatory expression.',
-        '',
-        'Everything outside that TARGET response remains governed by the full characterization, established history, active motives, relationships, genre, scene logic, and other active instructions. Do not let a dice result flatten the character, narrow the reply to the TARGET alone, reduce dialogue or prose energy, or suppress unrelated initiative, secondary actions, interactions, emotions, humor, sexuality, conflict, or natural scene development.',
+        'Characterization, established history, active motives, relationships, genre, scene logic, and all other active instructions remain responsible for character behavior outside the enabled answer-strategy and event categories.',
         '',
         'Do not discuss this instruction, explain the dice, or answer as Weave. Perform the result directly in the continuing roleplay.',
         '',
         '<TURN_EXECUTION_DIRECTIVE>',
         targetInstruction,
     ];
-    if (rows.length) {
-        parts.push('\nCHARACTER RESULTS');
-        rows.forEach((row, index) => {
-            parts.push(`${index + 1}. ${row.label}: END STATE toward the TARGET [${row.reception.end}]. ${row.reception.text}. TARGET-stance strength: ${row.intensity[1]}; this does not set the scene's overall emotional or prose intensity. Visibility of this TARGET stance: ${row.disclosure[1]}; this does not limit the character's general expressiveness, dialogue, initiative, or other emotions. TARGET follow-through: ${row.execution[1]}.${row.expression ? ` Mandatory TARGET-facing expression: ${row.expression[1]}; this applies only to expressing the assigned response and must not suppress other natural behavior.` : ''} The reply must end with this TARGET result still functionally intact; warmth, humor, attraction, tenderness, explanation, conditions, or compromise cannot repair or neutralize an AGAINST result. Other character-driven actions and developments may occur freely so long as they do not functionally reverse the assigned TARGET result.`);
-        });
-        parts.push('Rows marked 미배정 are unassigned slots. Assign them internally only to distinct assistant-controlled characters who materially participate, in order of first active participation. Mere presence, mention, or observation does not qualify. Discard unused rows.');
-    }
     if (strategyRows.length) {
         parts.push('\nANSWER STRATEGIES');
         strategyRows.forEach((row, index) => parts.push(`${index + 1}. ${row.label}: if this character materially answers an informational question or has a real opportunity to disclose information, ${row.text}. Otherwise this row has no effect.`));
@@ -339,17 +254,25 @@ function compileDirective(type, userText) {
     if (events.minor?.action === 'start') parts.push(`\nMINOR EVENT [START REQUIRED]: introduce one small, immediate, context-compatible development in “${events.minor.domainText}”, ${events.minor.fortuneText} for the focal interest. Keep its consequences local and do not turn it into a major plot.`);
     if (events.minor?.action === 'continue') parts.push(`\nMINOR EVENT [CONTINUE]: carry the existing small development in “${events.minor.domainText}” only as far as its direct consequence requires, then allow it to leave focus. Do not duplicate it.`);
     parts.push('\nApply all other active characterization, continuity, world, genre, prose, output, and USER_CONTROL instructions in their own scopes. This directive decides only the enabled categories above.', '</TURN_EXECUTION_DIRECTIVE>', ')');
-    return { type, userText, rows, strategyRows, events, prompt: parts.join('\n'), createdAt: Date.now() };
+    return { type, userText, strategyRows, events, prompt: parts.join('\n'), createdAt: Date.now() };
 }
 
 function macroValue() {
-    if (settings().injectionMode !== 'macro' || !runtime.directive?.prompt) return '';
+    if (!settings().masterEnabled || settings().injectionMode !== 'macro' || !runtime.directive?.prompt) return '';
     return runtime.directive.prompt;
 }
 
 async function prepareGeneration(type, _options, dryRun) {
     if (dryRun || type === 'quiet' || type === 'impersonate') return;
     const s = settings();
+    if (!s.masterEnabled) {
+        runtime.directive = null;
+        runtime.lastValidation = null;
+        runtime.retrying = false;
+        runtime.retries = 0;
+        setExtensionPrompt(PROMPT_KEY, '', extension_prompt_types.IN_CHAT, 0);
+        return;
+    }
     const text = latestUserText(type);
     runtime.lastGenerationType = type || 'normal';
     if (isOoc(text)) {
@@ -386,7 +309,6 @@ async function prepareGeneration(type, _options, dryRun) {
 
 function showRollToast(result) {
     const bits = [];
-    if (result.rows.length) bits.push(`캐릭터: ${settings().directionMode === 'negative' ? '부정 편향' : '일반'}`);
     if (result.strategyRows.length) bits.push('답변 전략');
     if (result.events.major?.action === 'start') bits.push('대형 사건 발생');
     if (result.events.minor?.action === 'start') bits.push('소형 사건 발생');
@@ -397,7 +319,7 @@ function showRollToast(result) {
 function buildValidatorPrompt(assistantText, directive = runtime.directive) {
     const r = directive;
     return [
-        { role: 'system', content: `You are a strict compliance judge. Compare only the externally fixed directive with the functional outcome of the assistant IC response. The directive is final and cannot be reinterpreted through characterization, realism, sympathy, warmth, compromise, or narrative preference. Judge what the response actually does, not stated intentions. The character dice constrain only the assigned response to the TARGET: do not fail a response for unrelated initiative, dialogue, secondary actions, emotions, scene development, or prose choices unless they functionally reverse an assigned TARGET result. Do not require a separate latest-user-input field and never fail merely because no new user message exists; for a continuation, identify the active TARGET from the directive and the ongoing interaction visible in the response. Evaluate only enabled categories. Return only valid JSON with this schema: {"overall":"PASS|FAIL","direction":"PASS|FAIL|NA","strategy":"PASS|FAIL|NA","major":"PASS|FAIL|NA","minor":"PASS|FAIL|NA","majorStatus":"KEEP|RESOLVED|NA","reasonsKo":["short Korean reason"],"summaryKo":"detailed but concise Korean explanation"}. A negative AGAINST result fails if the character accepts, concedes, complies, implements, reconciles, or functionally carries out the TARGET, even with conditions or complaints. UNRESOLVED fails if settled. TOWARD fails if rejected. TARGET-stance intensity and visibility apply only to that stance, not to the overall scene. TARGET follow-through must be satisfied without treating it as a cap on unrelated activity. Mandatory expression must occur at the required level within the TARGET-facing response, but it does not prohibit other natural behavior. Do not judge prose quality.` },
+        { role: 'system', content: `You are a strict compliance judge. Compare only the externally fixed directive with the functional outcome of the assistant IC response. The directive is final and cannot be reinterpreted through characterization, realism, sympathy, warmth, compromise, or narrative preference. Judge what the response actually does, not stated intentions. Do not require a separate latest-user-input field and never fail merely because no new user message exists; for a continuation, identify the active TARGET from the directive and the ongoing interaction visible in the response. Evaluate only enabled categories. Return only valid JSON with this schema: {"overall":"PASS|FAIL","strategy":"PASS|FAIL|NA","major":"PASS|FAIL|NA","minor":"PASS|FAIL|NA","majorStatus":"KEEP|RESOLVED|NA","reasonsKo":["short Korean reason"],"summaryKo":"detailed but concise Korean explanation"}. Do not judge prose quality.` },
         { role: 'user', content: `EXTERNAL DIRECTIVE:\n${r.prompt}\n\nASSISTANT IC RESPONSE:\n${assistantText}` },
     ];
 }
@@ -424,9 +346,6 @@ function restoreValidationDirective(saved, userText) {
         'RESTORED EXTERNAL DIRECTIVE FOR THE LATEST ASSISTANT IC RESPONSE.',
         'Judge the saved outcomes exactly. Characterization or narrative preference cannot alter them.',
     ];
-    for (const row of saved.rows || []) {
-        lines.push(`CHARACTER: ${row.label}. Required end state: ${row.reception?.end || 'NA'} (${row.reception?.label || ''}). Intensity: ${row.intensity?.[0] || 'NA'}. Disclosure: ${row.disclosure?.[0] || 'NA'}. Execution: ${row.execution?.[0] || 'NA'}.${row.expression?.[0] ? ` Mandatory expression: ${row.expression[0]}.` : ''}`);
-    }
     for (const row of saved.strategyRows || []) {
         lines.push(`ANSWER STRATEGY: ${row.label}: ${row.ko || 'NA'}.`);
     }
@@ -539,6 +458,7 @@ function parseJudge(raw) {
 
 async function validateLatest({ manual = false } = {}) {
     const s = settings();
+    if (!s.masterEnabled) throw new Error('굴려굴려가 OFF 상태입니다.');
     const sourceMetadata = SillyTavern.getContext().chatMetadata;
     if (!runtime.directive) throw new Error('현재 턴에 저장된 판정이 없습니다.');
     if (!s.validationProfile) throw new Error('판독용 연결 프로필을 먼저 선택하세요.');
@@ -583,7 +503,7 @@ function retryLimit() {
 
 async function onMessageReceived(_messageId, type) {
     const s = settings();
-    if (s.validationMode !== 'auto' || !runtime.directive || runtime.validating) return;
+    if (!s.masterEnabled || s.validationMode !== 'auto' || !runtime.directive || runtime.validating) return;
     if (type === 'quiet' || isOoc(runtime.directive.userText)) return;
     const sourceContext = SillyTavern.getContext();
     const sourceMetadata = sourceContext.chatMetadata;
@@ -628,10 +548,10 @@ async function onMessageReceived(_messageId, type) {
 function categoryStatus() {
     const s = settings();
     return [
-        `캐릭터 ${s.directionEnabled ? `ON · ${s.directionMode === 'negative' ? '부정 편향' : '일반'}` : 'OFF'}`,
+        `전체 ${s.masterEnabled ? 'ON' : 'OFF'}`,
         `답변전략 ${s.strategyEnabled ? 'ON' : 'OFF'}`,
-        `대형 ${s.majorEnabled ? `ON · ${s.majorChance}%` : 'OFF'}`,
-        `소형 ${s.minorEnabled ? `ON · ${s.minorChance}%` : 'OFF'}`,
+        `대형 ${s.majorEnabled ? `${s.majorChance}%` : 'OFF'}`,
+        `소형 ${s.minorEnabled ? `${s.minorChance}%` : 'OFF'}`,
         `판독 ${s.validationMode === 'auto' ? '자동' : s.validationMode === 'manual' ? '수동' : 'OFF'}`,
     ].join(' / ');
 }
@@ -640,11 +560,10 @@ function statusHtml() {
     const r = runtime.directive;
     const v = runtime.lastValidation;
     if (!r) return '<div class="td-status-section"><h3>아직 판정 없음</h3><p class="td-muted">IC 답변을 한 번 생성하면 이곳에 현재 턴의 해석이 표시됩니다.</p></div>';
-    const rows = r.rows.map(x => `<p><b>${esc(x.label)}</b> — ${esc(x.reception.label)}, ${esc(x.intensity[0])}, ${esc(x.disclosure[0])}, ${esc(x.execution[0])}${x.expression ? ` · 필수 표현: ${esc(x.expression[0])}` : ''}</p>`).join('') || '<p class="td-muted">사용 안 함</p>';
-    const strategy = r.strategyRows.map(x => `<p><b>${esc(x.label)}</b> — ${esc(x.ko)}</p>`).join('') || '<p class="td-muted">사용 안 함</p>';
-    const events = [r.events.major ? `대형: ${r.events.major.action === 'start' ? '새로 발생' : r.events.major.action === 'surface' ? '이번 턴 진행' : '배경에서 유지'} · ${r.events.major.domain} · ${r.events.major.fortune}` : '대형: 없음', r.events.minor ? `소형: ${r.events.minor.action === 'start' ? '새로 발생' : '직접 결과 진행'} · ${r.events.minor.domain} · ${r.events.minor.fortune}` : '소형: 없음'].map(x => `<p>${esc(x)}</p>`).join('');
+    const strategy = (r.strategyRows || []).map(x => `<p><b>${esc(x.label)}</b> — ${esc(x.ko)}</p>`).join('') || '<p class="td-muted">사용 안 함</p>';
+    const events = [r.events?.major ? `대형: ${r.events.major.action === 'start' ? '새로 발생' : r.events.major.action === 'surface' ? '이번 턴 진행' : '배경에서 유지'} · ${r.events.major.domain} · ${r.events.major.fortune}` : '대형: 없음', r.events?.minor ? `소형: ${r.events.minor.action === 'start' ? '새로 발생' : '직접 결과 진행'} · ${r.events.minor.domain} · ${r.events.minor.fortune}` : '소형: 없음'].map(x => `<p>${esc(x)}</p>`).join('');
     const validation = v ? `<p><b>${v.overall === 'PASS' ? '✅ 통과' : '❌ 실패'}</b></p><p>${esc(v.summaryKo || '')}</p>${(v.reasonsKo || []).map(x => `<p>• ${esc(x)}</p>`).join('')}<p class="td-muted">재생성 사용: ${runtime.retries}회</p>` : '<p class="td-muted">아직 판독하지 않았습니다.</p>';
-    return `<div class="td-status-section"><h3>🎭 캐릭터 판정</h3>${rows}</div><div class="td-status-section"><h3>🗣️ 답변 전략</h3>${strategy}</div><div class="td-status-section"><h3>🎬 사건</h3>${events}</div><div class="td-status-section"><h3>🔎 답변 검증</h3>${validation}</div>`;
+    return `<div class="td-status-section"><h3>🗣️ 답변 전략</h3>${strategy}</div><div class="td-status-section"><h3>🎬 사건</h3>${events}</div><div class="td-status-section"><h3>🔎 답변 검증</h3>${validation}</div>`;
 }
 
 function eventHtml() {
@@ -670,7 +589,7 @@ function quickPanelHtml() {
             <button type="button" id="td_quick_close" class="td-quick-close" aria-label="닫기">×</button>
         </div>
         <div class="td-quick-toggles">
-            <label class="td-quick-toggle"><input type="checkbox" data-td-quick="directionEnabled"><span>캐릭터 방향</span></label>
+            <label class="td-quick-toggle"><input type="checkbox" data-td-master><span>전체 작동</span></label>
             <label class="td-quick-toggle"><input type="checkbox" data-td-quick="strategyEnabled"><span>답변 전략</span></label>
             <label class="td-quick-toggle"><input type="checkbox" data-td-quick="majorEnabled"><span>대형 사건</span></label>
             <label class="td-quick-toggle"><input type="checkbox" data-td-quick="minorEnabled"><span>소형 사건</span></label>
@@ -689,13 +608,13 @@ function refreshQuickPanel() {
     if (!$('#td_quick_popover').length) return;
     const s = settings();
     const st = state();
+    $('[data-td-master]').prop('checked', Boolean(s.masterEnabled));
     $('[data-td-quick]').each(function () {
         const key = $(this).attr('data-td-quick');
         $(this).prop('checked', Boolean(s[key]));
     });
-    const direction = s.directionEnabled ? (s.directionMode === 'negative' ? '부정' : '일반') : 'OFF';
     const validation = s.validationMode === 'auto' ? '자동 판독' : s.validationMode === 'manual' ? '수동 판독' : '판독 OFF';
-    $('#td_quick_summary').text(`캐릭터 ${direction} · ${validation} · 대형 ${st.major.status === 'active' ? '진행 중' : '대기'} · 소형 ${st.minor.status === 'active' ? '진행 중' : '대기'}`);
+    $('#td_quick_summary').text(`${s.masterEnabled ? '전체 ON' : '전체 OFF'} · ${validation} · 대형 ${st.major.status === 'active' ? '진행 중' : '대기'} · 소형 ${st.minor.status === 'active' ? '진행 중' : '대기'}`);
     $('#td_quick_major_done').prop('disabled', st.major.status !== 'active');
     $('#td_quick_minor_done').prop('disabled', st.minor.status !== 'active');
 }
@@ -805,9 +724,6 @@ function bindPanelResize() {
 
 function syncInputs() {
     const s = settings();
-    $('#td_direction_enabled').prop('checked', s.directionEnabled);
-    $('#td_direction_mode').val(s.directionMode);
-    $('#td_direction_additional').prop('checked', s.additionalCharacters);
     $('#td_strategy_enabled').prop('checked', s.strategyEnabled);
     $('#td_major_enabled').prop('checked', s.majorEnabled);
     $('#td_major_chance').val(s.majorChance); $('#td_major_chance_out').text(`${s.majorChance}%`);
@@ -827,7 +743,6 @@ function syncInputs() {
 
 function updateDisabledStates() {
     const s = settings();
-    $('#td_direction_mode,#td_direction_additional').prop('disabled', !s.directionEnabled);
     $('#td_major_chance').prop('disabled', !s.majorEnabled);
     $('#td_minor_chance,#td_minor_cooldown').prop('disabled', !s.minorEnabled);
     $('#td_validation_profile,#td_validation_max_tokens,#td_retry_mode').prop('disabled', s.validationMode === 'off');
@@ -920,9 +835,6 @@ function registerCommands() {
 }
 
 function bindUi() {
-    saveInput('#td_direction_enabled', 'directionEnabled', Boolean);
-    saveInput('#td_direction_mode', 'directionMode');
-    saveInput('#td_direction_additional', 'additionalCharacters', Boolean);
     saveInput('#td_strategy_enabled', 'strategyEnabled', Boolean);
     saveInput('#td_major_enabled', 'majorEnabled', Boolean);
     saveInput('#td_major_chance', 'majorChance', Number);
@@ -962,12 +874,25 @@ function bindUi() {
     $(document).off('pointerdown.tdQuick').on('pointerdown.tdQuick', e => {
         if (!$(e.target).closest('#td_quick_popover,#td_floating_button,#td_wand_entry').length) hideQuickPanel();
     });
+    $('[data-td-master]').on('change', function () {
+        const enabled = this.checked;
+        settings().masterEnabled = enabled;
+        runtime.turnKey = '';
+        runtime.directive = null;
+        runtime.lastValidation = null;
+        runtime.retrying = false;
+        runtime.retries = 0;
+        setExtensionPrompt(PROMPT_KEY, '', extension_prompt_types.IN_CHAT, 0);
+        saveSettingsDebounced();
+        refreshUi();
+        toastr.info(`전체 작동: ${enabled ? 'ON' : 'OFF'}`, '🎲 굴려굴려', { timeOut: 1200, preventDuplicates: true });
+    });
     $('[data-td-quick]').on('change', function () {
         const key = $(this).attr('data-td-quick');
         settings()[key] = this.checked;
         saveSettingsDebounced();
         syncInputs();
-        const names = { directionEnabled: '캐릭터 방향', strategyEnabled: '답변 전략', majorEnabled: '대형 사건', minorEnabled: '소형 사건' };
+        const names = { strategyEnabled: '답변 전략', majorEnabled: '대형 사건', minorEnabled: '소형 사건' };
         toastr.info(`${names[key] || key}: ${this.checked ? 'ON' : 'OFF'}`, '🎲 굴려굴려', { timeOut: 1200 });
     });
     $('#td_quick_settings').on('click', () => { showPanel('control'); toastr.info('본 설정을 열었습니다.', '🎲 굴려굴려', { timeOut: 1200 }); });
